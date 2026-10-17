@@ -23,12 +23,18 @@ export interface BrandConfig {
   themeColor: string;
 }
 
-/** The default brand: the product itself, with no vendor overrides. */
+/**
+ * The brand the classroom wears: AthenIQ's learning mark — the graduation
+ * cap crowned by the spark (`docs/Brand.md` in the AthenIQ checkout). The
+ * rasters beside this file's `logoSrc`/`markSrc` are rendered from the same
+ * geometry by `scripts/build-course-images.py`, so the classroom, the LMS
+ * and the landing page cannot drift apart.
+ */
 export const DEFAULT_BRAND: BrandConfig = {
-  productName: 'OpenMAIC',
-  shortName: 'OpenMAIC',
-  logoSrc: '/logo-horizontal.png',
+  productName: 'AthenIQ',
+  shortName: 'AthenIQ',
+  logoSrc: '/atheniq-logo.png',
   logoHasWordmark: true,
-  markSrc: '/openmaic-mark.png',
-  themeColor: '#722ed1',
+  markSrc: '/atheniq-mark.png',
+  themeColor: '#10b981',
 };
