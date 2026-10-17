@@ -85,7 +85,13 @@ COPY . .
 # memory, so it does not by itself prevent a host- or VM-level OOM.
 RUN NODE_OPTIONS=--max-old-space-size=1024 pnpm run build:packages
 
-RUN pnpm build
+# Low-memory container: the LMS instance caps memory at 8 GiB and shares it
+# with the running Tutor stack, so cap the Turbopack build heap so it GCs
+# instead of being OOM-killed. This bounds the JS heap only -- the step's total
+# RSS is still ~4.7 GiB, so build with the Tutor stack stopped (see
+# docs/Deployment.md, stage 3). Upstream leaves this unset; the line above
+# already caps the package build at 1024.
+RUN NODE_OPTIONS=--max-old-space-size=3072 pnpm build
 
 # ---- Stage 4: Runner ----
 FROM node:22-alpine AS runner
