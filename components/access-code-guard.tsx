@@ -2,7 +2,9 @@
 
 import { Fragment, useEffect, useState, ReactNode } from 'react';
 import { AccessCodeModal } from '@/components/access-code-modal';
-import { useSettingsStore } from '@/lib/store/settings';
+import { importLegacyModelSettings } from '@/components/model-settings-init';
+import { modelSettingsClient } from '@/lib/model-settings/client';
+import { reloadAgentRegistry } from '@/lib/orchestration/registry/store';
 
 export function AccessCodeGuard({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<{
@@ -10,8 +12,9 @@ export function AccessCodeGuard({ children }: { children: ReactNode }) {
     authenticated: boolean;
     loading: boolean;
   }>({ enabled: false, authenticated: false, loading: true });
-  // Remount the page once the code is accepted: its first mount happened
-  // before there was an access cookie, so everything it fetched was refused.
+  // The page mounted under the gate has already sent its requests (library,
+  // folders, active runs, ...) and they were answered 401. Mounting it again
+  // once the code is accepted lets every one of them be sent authorized.
   const [grantedCount, setGrantedCount] = useState(0);
 
   useEffect(() => {
@@ -39,9 +42,6 @@ export function AccessCodeGuard({ children }: { children: ReactNode }) {
   }, []);
 
   const needsAuth = !status.loading && status.enabled && !status.authenticated;
-  // Nothing under the gate mounts until the gate has answered, and only when
-  // it is satisfied. A pre-auth mount sent the page's library requests without
-  // a cookie, and their 401s were surfaced as "Persistence is unavailable".
   const ready = !status.loading && !needsAuth;
 
   return (
@@ -52,16 +52,31 @@ export function AccessCodeGuard({ children }: { children: ReactNode }) {
           onSuccess={() => {
             setStatus((s) => ({ ...s, authenticated: true }));
             setGrantedCount((n) => n + 1);
-            // ServerProvidersInit runs on mount, which on an ACCESS_CODE-gated
+            // Model settings are read on mount, which on an ACCESS_CODE-gated
             // deployment is before any access cookie exists: the middleware
-            // answers 401 and the store silently keeps its blank defaults.
-            // Nothing re-fetches afterwards, so every server-configured
-            // provider reads as unconfigured until a manual reload. Re-fetch
-            // now that the request will be authorized.
-            void useSettingsStore.getState().fetchServerProviders();
+            // answers 401 and nothing is known about the workspace's models
+            // until a reload. Read them again now that the request will be
+            // authorized, and retry the one-time import of browser settings.
+            void modelSettingsClient.load();
+            void importLegacyModelSettings();
+            // The same for the custom agents (and their one-time import).
+            void reloadAgentRegistry();
+            // And for the courses this browser stored before 1.2.0: the
+            // import's first run was refused before the gate passed.
+            void import('@/lib/legacy-browser-import')
+              .then(({ resumeLegacyBrowserImportAfterAccess }) =>
+                resumeLegacyBrowserImportAfterAccess(),
+              )
+              .catch((error: unknown) =>
+                console.warn('[legacy-browser-import] Could not load:', error),
+              );
           }}
         />
       )}
+      {/* Nothing under the gate mounts until the gate has answered, and only
+          when it is satisfied: a pre-auth mount sends the page's library
+          requests without a cookie, and their 401s were surfaced as
+          "Persistence is unavailable". */}
       {ready && <Fragment key={grantedCount}>{children}</Fragment>}
     </>
   );

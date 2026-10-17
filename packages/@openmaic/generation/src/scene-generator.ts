@@ -15,7 +15,7 @@ import type {
   SlideBackground,
   WidgetType,
 } from '@openmaic/dsl';
-import { isWidgetType, normalizeElement } from '@openmaic/dsl';
+import { isWidgetType, normalizeElement, safeKatexOptions } from '@openmaic/dsl';
 import { MAX_VISION_IMAGES } from './constants.js';
 import {
   formatImageDescription,
@@ -31,6 +31,7 @@ import type {
 } from './outline-types.js';
 import { DEFAULT_LANGUAGE_DIRECTIVE } from './outline-generator.js';
 import { postProcessInteractiveHtml } from './interactive-post-processor.js';
+import { findInteractiveScriptSyntaxFailure } from './interactive-script-validator.js';
 import { parseActionsFromStructuredOutput } from './action-parser.js';
 import { parseJsonResponse } from './json-repair.js';
 import {
@@ -76,6 +77,7 @@ export type SceneContentFailureCode = 'prompt-unavailable' | 'invalid-model-outp
 
 export interface SceneContentFailure {
   code: SceneContentFailureCode;
+  message?: string;
 }
 
 export interface SceneContentOptions {
@@ -577,11 +579,14 @@ function processLatexElements(
       }
 
       try {
-        const html = katex.renderToString(latexStr, {
-          throwOnError: false,
-          displayMode: true,
-          output: 'html',
-        });
+        const html = katex.renderToString(
+          latexStr,
+          safeKatexOptions({
+            throwOnError: false,
+            displayMode: true,
+            output: 'html',
+          }),
+        );
 
         return {
           ...el,
@@ -780,10 +785,19 @@ async function generateSlideContent(
     return null;
   }
 
+  const invalidRotation = findInvalidShapeRotation(generatedData.elements);
+  if (invalidRotation) {
+    log.error(invalidRotation);
+    onFailure?.({ code: 'invalid-model-output', message: invalidRotation });
+    return null;
+  }
+
   log.debug(`Got ${generatedData.elements.length} elements for: ${outline.title}`);
 
   // Debug: Log image elements before resolution
-  const imageElements = generatedData.elements.filter((el) => el.type === 'image');
+  const imageElements = generatedData.elements.filter(
+    (el) => el && typeof el === 'object' && el.type === 'image',
+  );
   if (imageElements.length > 0) {
     log.debug(
       `Image elements before resolution:`,
@@ -825,7 +839,12 @@ async function generateSlideContent(
   const processedElements: PPTElement[] = videoNormalizedElements.map((el) => ({
     ...el,
     id: `${el.type}_${nanoid(8)}`,
-    rotate: 0,
+    // Shape rotation is part of the model-facing geometry contract. Preserve
+    // finite angles while keeping the legacy zero default for other elements.
+    rotate:
+      el.type === 'shape' && typeof el.rotate === 'number' && Number.isFinite(el.rotate)
+        ? el.rotate
+        : 0,
   })) as PPTElement[];
 
   // Process background
@@ -846,6 +865,26 @@ async function generateSlideContent(
     background,
     remark: generatedData.remark || outline.description,
   };
+}
+
+function findInvalidShapeRotation(elements: GeneratedSlideData['elements']): string | undefined {
+  for (const [index, element] of elements.entries()) {
+    if (!element || typeof element !== 'object') {
+      continue;
+    }
+    if (element.type !== 'shape' || !Object.prototype.hasOwnProperty.call(element, 'rotate')) {
+      continue;
+    }
+
+    const rotate = element.rotate;
+    if (rotate === null || (typeof rotate === 'number' && Number.isFinite(rotate))) {
+      continue;
+    }
+
+    const received = typeof rotate === 'number' ? String(rotate) : JSON.stringify(rotate);
+    return `Invalid shape rotation at shape[${index}].rotate: expected a finite number in degrees or null, received ${received}`;
+  }
+  return undefined;
 }
 
 /**
@@ -891,7 +930,8 @@ async function generateQuizContent(
 
   log.debug(`Got ${generatedQuestions.length} questions for: ${outline.title}`);
 
-  // Ensure each question has an ID and normalize options format
+  // Ensure each question has an ID and normalize options format.
+  // Plain strings become letter/content pairs. Object fields stay as written.
   const questions: QuizQuestion[] = generatedQuestions.map((q) => {
     const isText = q.type === 'short_answer';
     const options = isText ? undefined : normalizeQuizOptions(q.options);
@@ -906,17 +946,79 @@ async function generateQuizContent(
     };
   });
 
+  const contractFailure = findQuizOptionsContractFailure(questions);
+  if (contractFailure) {
+    log.error(`Quiz option contract failed for "${outline.title}": ${contractFailure}`);
+    onFailure?.({ code: 'invalid-model-output' });
+    return null;
+  }
+
   return { questions };
 }
+
+const QUIZ_OPTION_VALUE = /^[A-Z]$/;
+
+/**
+ * Reason a built quiz breaks the choice-option contract, or null when it holds.
+ *
+ * Choice questions (everything except `short_answer`) need a non-empty option
+ * list whose `value`s are single ASCII letters A-Z, and every answer entry
+ * must equal one of those values exactly. Short-answer questions are skipped.
+ */
+export function findQuizOptionsContractFailure(questions: readonly QuizQuestion[]): string | null {
+  for (let index = 0; index < questions.length; index += 1) {
+    const question = questions[index];
+    if (!question || question.type === 'short_answer') continue;
+
+    const where = question.id ? `question ${index + 1} (${question.id})` : `question ${index + 1}`;
+    const options = question.options;
+    if (!options || options.length === 0) {
+      return `${where}: choice question has no options`;
+    }
+
+    const optionValues = new Set<string>();
+
+    for (let optionIndex = 0; optionIndex < options.length; optionIndex += 1) {
+      const value = options[optionIndex]?.value;
+      if (typeof value !== 'string' || !QUIZ_OPTION_VALUE.test(value)) {
+        const shown = JSON.stringify(value);
+        return `${where}: option ${optionIndex + 1} value ${shown} is not a single letter A-Z`;
+      }
+
+      if (optionValues.has(value)) {
+        return `${where}: option ${optionIndex + 1} repeats value ${JSON.stringify(value)}`;
+      }
+
+      optionValues.add(value);
+    }
+
+    const answer = question.answer;
+    if (!answer || answer.length === 0) {
+      return `${where}: answer key does not reference an option value`;
+    }
+
+    for (const entry of answer) {
+      if (!optionValues.has(entry)) {
+        return `${where}: answer ${JSON.stringify(entry)} does not match an option value`;
+      }
+    }
+  }
+
+  return null;
+}
+
+type NormalizedQuizOption = { value: string; label: string };
 
 /**
  * Normalize quiz options from AI response.
  * AI may generate plain strings ["OptionA", "OptionB"] or QuizOption objects.
- * This normalizes to QuizOption[] format: { value: "A", label: "OptionA" }
+ * Plain strings become { value: "A", label: "OptionA" }. Object `value` and
+ * `label` are kept as provided — a letter in `label` with content in `value`
+ * is not swapped.
  */
-function normalizeQuizOptions(
+export function normalizeQuizOptions(
   options: unknown[] | undefined,
-): { value: string; label: string }[] | undefined {
+): NormalizedQuizOption[] | undefined {
   if (!options || !Array.isArray(options)) return undefined;
 
   return options.map((opt, index) => {
@@ -1274,6 +1376,16 @@ export async function generateWidgetContent(
 
   if (!html) {
     log.error(`Failed to extract HTML from ${widgetType} response for: ${outline.title}`);
+    options.onFailure?.({ code: 'invalid-model-output' });
+    return null;
+  }
+
+  // Reject visually valid but inert widgets whose classic inline JS cannot parse.
+  const scriptSyntaxFailure = findInteractiveScriptSyntaxFailure(html);
+  if (scriptSyntaxFailure) {
+    log.error(
+      `Generated ${widgetType} widget contains invalid inline JavaScript in script #${scriptSyntaxFailure.scriptIndex}: ${scriptSyntaxFailure.message}`,
+    );
     options.onFailure?.({ code: 'invalid-model-output' });
     return null;
   }

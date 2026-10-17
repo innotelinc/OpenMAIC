@@ -14,7 +14,42 @@ import type {
 /** Lifecycle of a render job as the app observes it. */
 export type RenderJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
-/** User-facing render options accepted by `POST /render`. */
+declare const renderOwnerIdBrand: unique symbol;
+declare const admissionIdentityBrand: unique symbol;
+
+/** Durable authorization identity asserted by the trusted app proxy. */
+export type RenderOwnerId = string & { readonly [renderOwnerIdBrand]: 'RenderOwnerId' };
+
+/** Network-derived bucket used only for admission control. */
+export type AdmissionIdentity = string & {
+  readonly [admissionIdentityBrand]: 'AdmissionIdentity';
+};
+
+const INTERNAL_IDENTITY_PATTERN = /^[\x21-\x7e]{1,256}$/;
+
+/** Parse the app's durable owner assertion at the HTTP boundary. */
+export function isRenderOwnerId(value: unknown): value is RenderOwnerId {
+  return typeof value === 'string' && INTERNAL_IDENTITY_PATTERN.test(value);
+}
+
+/** Parse the app's admission bucket assertion at the HTTP boundary. */
+export function isAdmissionIdentity(value: unknown): value is AdmissionIdentity {
+  return typeof value === 'string' && INTERNAL_IDENTITY_PATTERN.test(value);
+}
+
+/** Construct a durable render owner for trusted internal callers and tests. */
+export function requireRenderOwnerId(value: unknown): RenderOwnerId {
+  if (!isRenderOwnerId(value)) throw new TypeError('Invalid render owner identity');
+  return value;
+}
+
+/** Construct an admission identity for trusted internal callers and tests. */
+export function requireAdmissionIdentity(value: unknown): AdmissionIdentity {
+  if (!isAdmissionIdentity(value)) throw new TypeError('Invalid render admission identity');
+  return value;
+}
+
+/** User-facing render options accepted by `POST /owner-bound/render`. */
 export interface RenderOptions {
   /** Integer frames per second. */
   fps: number;
@@ -104,23 +139,45 @@ export interface RenderExecutionRequest {
   };
 }
 
+/** Resource-owner settlement. A service slot is not the resource reservation. */
+export type RenderResourceDiagnosticCode =
+  | 'main_pid_fields_not_ready'
+  | 'main_pid_startup_transient'
+  | 'main_pid_process_exited'
+  | 'main_pid_read_error'
+  | 'main_pid_identity_mismatch';
+
+export interface RenderResourceSettlement {
+  published: boolean | 'unknown';
+  cleanupVerified: boolean;
+  reservationReturned: boolean;
+  admissionClosed: boolean;
+  /** Bounded, path-free summary safe to expose over HTTP. */
+  diagnosticCode?: RenderResourceDiagnosticCode;
+  /** Exact JSON-safe owner cleanup/publication evidence, retained on failure too. */
+  details: Record<string, unknown>;
+}
+
 export type RenderExecutionResult =
   | {
       status: 'succeeded';
       performance?: RenderPerformanceSummary;
       metrics?: RenderExecutionMetrics;
+      resources?: RenderResourceSettlement;
     }
   | {
       status: 'cancelled';
       failure: RenderCancelledFailure;
       performance?: RenderPerformanceSummary;
       metrics?: RenderExecutionMetrics;
+      resources?: RenderResourceSettlement;
     }
   | {
       status: 'failed';
       failure: RenderFailedFailure;
       performance?: RenderPerformanceSummary;
       metrics?: RenderExecutionMetrics;
+      resources?: RenderResourceSettlement;
     };
 
 /**
@@ -128,9 +185,11 @@ export type RenderExecutionResult =
  * layer surfaces it as-is and the client scales it to a percent.
  */
 export interface RenderJobRecord {
-  id: string;
-  /** Optional caller identity used only for the per-user concurrency guard. */
-  userId?: string;
+  readonly id: string;
+  /** Immutable authorization identity. Never included in the public job projection. */
+  readonly ownerId: RenderOwnerId;
+  /** Immutable admission bucket, deliberately separate from authorization. */
+  readonly admissionIdentity: AdmissionIdentity;
   status: RenderJobStatus;
   progress: number;
   currentStage: string;
@@ -138,17 +197,26 @@ export interface RenderJobRecord {
   totalFrames?: number;
   metrics?: RenderExecutionMetrics;
   error?: string;
-  createdAtMs: number;
+  readonly createdAtMs: number;
   updatedAtMs: number;
   /** Absolute path to the unzipped project dir (for cleanup). */
-  projectDir: string;
+  readonly projectDir: string;
   /** Absolute path to the rendered MP4 once `succeeded`. */
   outputPath?: string;
   /** Domain failure retained independently from the HTTP-compatible error string. */
   failure?: RenderFailure;
   /** Executor-independent diagnostics for completed or failed attempts. */
   performance?: RenderPerformanceSummary;
+  resources?: RenderResourceSettlement;
 }
+
+/** Mutable fields accepted by JobStore.update; identity and storage keys cannot be patched. */
+export type RenderJobPatch = Partial<
+  Omit<
+    RenderJobRecord,
+    'id' | 'ownerId' | 'admissionIdentity' | 'createdAtMs' | 'updatedAtMs' | 'projectDir'
+  >
+>;
 
 export function isTerminal(status: RenderJobStatus): boolean {
   return status === 'succeeded' || status === 'failed' || status === 'cancelled';

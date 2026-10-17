@@ -2,8 +2,8 @@
  * Token Plan presets — multi-modal.
  *
  * A token plan (e.g. MiniMax) is often a single key that spans LLM + image +
- * video + TTS + web-search. A preset declares, per modality, the target provider
- * id + base URL in that modality's registry. "One-click apply" fills the key into
+ * video + TTS + web search + web fetch. A preset declares, per modality, the
+ * target provider id + base URL in that modality's registry. "One-click apply" fills the key into
  * every declared modality and lights it up; modalities not declared here are
  * simply "not adapted yet" (at our best — add an entry later to extend).
  *
@@ -17,7 +17,7 @@ import type { ProviderType } from '@/lib/types/provider';
 export type PresetCategory = 'official' | 'aggregator' | 'token_plan' | 'third_party';
 
 /** The modalities a token plan can be applied to. ASR is omitted = not adapted. */
-export type TokenPlanModality = 'llm' | 'image' | 'video' | 'tts' | 'webSearch';
+export type TokenPlanModality = 'llm' | 'image' | 'video' | 'tts' | 'webSearch' | 'webFetch';
 
 /** Where a token plan maps in one modality's provider registry. */
 export interface TokenPlanModalityTarget {
@@ -38,8 +38,18 @@ export interface TokenPlanModalityTarget {
    * them; we never silently drop a model the user paid for.
    */
   defaultModels?: string[];
-  /** TTS only: default model id to enable. */
+  /**
+   * LLM/TTS: the plan's recommended default model — for LLM the mainline model
+   * (defaults to `defaultModels[0]`), for TTS the model the plan enables.
+   */
   defaultModelId?: string;
+  /**
+   * LLM only: per-stage recommended models, applied as user-level stage routes
+   * (e.g. 'scene-content:slide' → the plan's courseware model). Stage keys live
+   * in the LLM_STAGES whitelist; ids must also appear in `defaultModels` so the
+   * route's model is selectable.
+   */
+  stageRoutes?: Record<string, string>;
 }
 
 export interface TokenPlanPreset {
@@ -49,6 +59,12 @@ export interface TokenPlanPreset {
   name: string;
   /** Optional vendor/docs link. */
   websiteUrl?: string;
+  /**
+   * Optional plan subscription links (domestic / international). Rendered as a
+   * links row in the plan panel; `websiteUrl` stays the generic manage-account
+   * link.
+   */
+  subscribeUrls?: { domestic: string; international: string };
   /** Example key prefix shown in the settings input placeholder. */
   apiKeyPlaceholder?: string;
   /** Icon path under /public (optional). */
@@ -59,7 +75,14 @@ export interface TokenPlanPreset {
 }
 
 /** Human-facing order of modalities in the apply result. */
-export const MODALITY_ORDER: TokenPlanModality[] = ['llm', 'image', 'video', 'tts', 'webSearch'];
+export const MODALITY_ORDER: TokenPlanModality[] = [
+  'llm',
+  'image',
+  'video',
+  'tts',
+  'webSearch',
+  'webFetch',
+];
 
 /**
  * Built-in token plans.
@@ -142,3 +165,21 @@ export const PRESET_CATEGORY_ORDER: PresetCategory[] = [
   'third_party',
   'official',
 ];
+
+/**
+ * Fingerprint of everything a preset seeds (model catalogues, default model,
+ * stage routes). Recorded on apply; when the shipped preset data changes, the
+ * fingerprint changes and the app re-seeds enabled plans on next load — so
+ * users who enabled a plan before a preset update still get the new defaults
+ * without re-applying. Credentials are deliberately excluded: only the user's
+ * key ever writes those.
+ */
+export function tokenPlanSeedFingerprint(preset: TokenPlanPreset): string {
+  const m = preset.modalities;
+  return JSON.stringify({
+    llm: [m.llm?.defaultModelId, m.llm?.defaultModels, m.llm?.stageRoutes],
+    image: m.image?.defaultModels,
+    video: m.video?.defaultModels,
+    tts: [m.tts?.defaultModelId, m.tts?.defaultModels],
+  });
+}

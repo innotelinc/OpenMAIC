@@ -12,6 +12,8 @@ vi.mock('node:dns', () => ({
 
 const PRIVATE_NETWORK_BLOCK_MESSAGE =
   'Local/private network URLs are not allowed. If this is a self-hosted deployment or internal gateway (including split-horizon DNS), set ALLOW_LOCAL_NETWORKS=true to allow local network targets.';
+const CLIENT_SUPPLIED_LOCAL_NETWORK_BLOCK_MESSAGE =
+  'Local/private network URLs are not allowed for a client-supplied endpoint. ALLOW_LOCAL_NETWORKS does not apply to this path. The endpoint must be a provider configured by the operator in openmaic.yml.';
 const CLOUD_METADATA_BLOCK_MESSAGE =
   'Cloud instance metadata endpoints are never allowed as outbound targets, even with ALLOW_LOCAL_NETWORKS=true.';
 const ALLOW_LOCAL_NETWORKS_GUIDANCE = 'ALLOW_LOCAL_NETWORKS=true';
@@ -173,6 +175,26 @@ describe('validateUrlForSSRF', () => {
       await expect(validateUrlForSSRF(url)).resolves.toBe(PRIVATE_NETWORK_BLOCK_MESSAGE);
     }
 
+    expect(lookupMock).not.toHaveBeenCalled();
+  });
+
+  it('classifies deprecated IPv4-compatible (::/96) literals by their embedded IPv4', async () => {
+    const { validateUrlForSSRF } = await import('@/lib/server/ssrf-guard');
+
+    // The WHATWG parser canonicalizes `[::127.0.0.1]` / `[::a.b.c.d]` to the
+    // compressed `[::xxxx:xxxx]` form, bypassing the IPv4-mapped decoder.
+    await expect(validateUrlForSSRF('http://[::127.0.0.1]/')).resolves.toBe(
+      PRIVATE_NETWORK_BLOCK_MESSAGE,
+    );
+    await expect(validateUrlForSSRF('http://[::7f00:1]/')).resolves.toBe(
+      PRIVATE_NETWORK_BLOCK_MESSAGE,
+    );
+    await expect(validateUrlForSSRF('http://[::a9fe:a9fe]/')).resolves.toBe(
+      CLOUD_METADATA_BLOCK_MESSAGE,
+    );
+    // A public embedded IPv4 stays allowed, mirroring the 6to4/NAT64 fixtures.
+    await expect(validateUrlForSSRF('http://[::8.8.8.8]/')).resolves.toBeNull();
+    await expect(validateUrlForSSRF('http://[::808:808]/')).resolves.toBeNull();
     expect(lookupMock).not.toHaveBeenCalled();
   });
 
@@ -547,6 +569,86 @@ describe('validateUrlForSSRF', () => {
   });
 });
 
+describe('validatePublicUrlForSSRF', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    lookupMock.mockReset();
+    delete process.env.ALLOW_LOCAL_NETWORKS;
+  });
+
+  afterEach(() => {
+    if (originalAllowLocalNetworks === undefined) {
+      delete process.env.ALLOW_LOCAL_NETWORKS;
+    } else {
+      process.env.ALLOW_LOCAL_NETWORKS = originalAllowLocalNetworks;
+    }
+  });
+
+  it('refuses client-supplied local targets without telling the caller to set the flag', async () => {
+    const { validatePublicUrlForSSRF } = await import('@/lib/server/ssrf-guard');
+    const urls = ['http://127.0.0.1:8000/v1', 'http://localhost:8000/v1', 'http://192.168.1.10/v1'];
+
+    for (const url of urls) {
+      const refused = await validatePublicUrlForSSRF(url);
+      expect(refused).toBe(CLIENT_SUPPLIED_LOCAL_NETWORK_BLOCK_MESSAGE);
+      expect(refused).not.toContain('set ALLOW_LOCAL_NETWORKS=true');
+    }
+
+    process.env.ALLOW_LOCAL_NETWORKS = 'true';
+    for (const url of urls) {
+      const refused = await validatePublicUrlForSSRF(url);
+      expect(refused).toBe(CLIENT_SUPPLIED_LOCAL_NETWORK_BLOCK_MESSAGE);
+      expect(refused).not.toContain('set ALLOW_LOCAL_NETWORKS=true');
+    }
+  });
+
+  it('keeps flag guidance on validateUrlForSSRF and allows a public hostname from both helpers', async () => {
+    const { validatePublicUrlForSSRF, validateUrlForSSRF } =
+      await import('@/lib/server/ssrf-guard');
+
+    await expect(validateUrlForSSRF('http://127.0.0.1:8000/v1')).resolves.toBe(
+      PRIVATE_NETWORK_BLOCK_MESSAGE,
+    );
+
+    process.env.ALLOW_LOCAL_NETWORKS = 'true';
+    await expect(validateUrlForSSRF('http://127.0.0.1:8000/v1')).resolves.toBeNull();
+
+    delete process.env.ALLOW_LOCAL_NETWORKS;
+    lookupMock.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+    await expect(validateUrlForSSRF('https://api.openai.com')).resolves.toBeNull();
+    await expect(validatePublicUrlForSSRF('https://api.openai.com')).resolves.toBeNull();
+  });
+
+  it('keeps cloud-metadata and never-allowed messages under the strict public policy', async () => {
+    const { validatePublicUrlForSSRF } = await import('@/lib/server/ssrf-guard');
+
+    await expect(validatePublicUrlForSSRF('http://169.254.169.254/')).resolves.toBe(
+      CLOUD_METADATA_BLOCK_MESSAGE,
+    );
+    await expect(validatePublicUrlForSSRF('http://240.0.0.1/')).resolves.toBe(
+      PRIVATE_NETWORK_BLOCK_MESSAGE,
+    );
+
+    lookupMock.mockResolvedValue([{ address: '192.168.1.10', family: 4 }]);
+    await expect(validatePublicUrlForSSRF('https://internal.example')).resolves.toBe(
+      CLIENT_SUPPLIED_LOCAL_NETWORK_BLOCK_MESSAGE,
+    );
+
+    lookupMock.mockResolvedValue([
+      { address: '192.168.1.10', family: 4 },
+      { address: '240.0.0.1', family: 4 },
+    ]);
+    await expect(validatePublicUrlForSSRF('https://mixed.example')).resolves.toBe(
+      PRIVATE_NETWORK_BLOCK_MESSAGE,
+    );
+
+    lookupMock.mockResolvedValue([{ address: '169.254.169.254', family: 4 }]);
+    await expect(validatePublicUrlForSSRF('https://metadata.example')).resolves.toBe(
+      CLOUD_METADATA_BLOCK_MESSAGE,
+    );
+  });
+});
+
 const STRICT_BLOCK_MESSAGE = 'Local/private/reserved network URLs are not allowed';
 
 describe('assertSafeIp', () => {
@@ -596,6 +698,17 @@ describe('assertSafeIp', () => {
     const { assertSafeIp } = await import('@/lib/server/ssrf-guard');
     expect(() => assertSafeIp('::ffff:127.0.0.1')).toThrow(STRICT_BLOCK_MESSAGE);
     expect(() => assertSafeIp('::ffff:8.8.8.8')).not.toThrow();
+  });
+
+  it('classifies deprecated IPv4-compatible (::/96) addresses by their embedded IPv4', async () => {
+    const { assertSafeIp, isPrivateIP } = await import('@/lib/server/ssrf-guard');
+
+    expect(isPrivateIP('::7f00:1')).toBe(true);
+    expect(isPrivateIP('::a9fe:a9fe')).toBe(true); // link-local metadata
+    expect(isPrivateIP('::808:808')).toBe(false); // 8.8.8.8
+    expect(() => assertSafeIp('::7f00:1')).toThrow(STRICT_BLOCK_MESSAGE);
+    expect(() => assertSafeIp('::a9fe:a9fe')).toThrow(STRICT_BLOCK_MESSAGE);
+    expect(() => assertSafeIp('::808:808')).not.toThrow();
   });
 
   it('rejects ISATAP and NAT64 addresses that embed a metadata or private IPv4', async () => {
@@ -751,5 +864,16 @@ describe('connectionAddressBlockReason', () => {
     expect(reason).toBe(PRIVATE_NETWORK_BLOCK_MESSAGE);
     expect(reason).not.toContain('not-an-ip');
     expect(connectionAddressBlockReason('not-an-ip', true)).toBe(PRIVATE_NETWORK_BLOCK_MESSAGE);
+  });
+
+  it('refuses deprecated IPv4-compatible (::/96) addresses at connect time', async () => {
+    const { connectionAddressBlockReason } = await import('@/lib/server/ssrf-guard');
+
+    expect(connectionAddressBlockReason('::7f00:1', false)).toBe(PRIVATE_NETWORK_BLOCK_MESSAGE);
+    expect(connectionAddressBlockReason('::7f00:1', true)).toBeNull();
+    // Metadata stays refused with the opt-in, exactly like its IPv4 form.
+    expect(connectionAddressBlockReason('::a9fe:a9fe', false)).toBe(CLOUD_METADATA_BLOCK_MESSAGE);
+    expect(connectionAddressBlockReason('::a9fe:a9fe', true)).toBe(CLOUD_METADATA_BLOCK_MESSAGE);
+    expect(connectionAddressBlockReason('::808:808', false)).toBeNull();
   });
 });

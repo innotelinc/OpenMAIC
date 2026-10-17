@@ -3,8 +3,8 @@
  * Next.js inlines at build time so they are safe to read from client
  * components. Server-only flags must not use the `NEXT_PUBLIC_` prefix.
  *
- * Truthy values: `'true'` or `'1'`. Anything else (including unset) is
- * treated as disabled.
+ * Truthy values: `'true'` or `'1'`. Unless a flag documents a different
+ * default, anything else (including unset) is treated as disabled.
  */
 
 function readBoolean(envValue: string | undefined): boolean {
@@ -36,6 +36,9 @@ export function isAgentRuntimeConfigured(): boolean {
  * route resolves an owner for every request and the owner-bound document store
  * records one for every course, so those facts exist whether or not the runtime
  * is enabled.
+ *
+ * The course library and folder routes (`/api/stages/**`, `/api/folders/**`)
+ * gate on this too: they need the database and nothing the runtime adds.
  */
 export function isServerPersistenceConfigured(): boolean {
   return Boolean(process.env.DATABASE_URL?.trim());
@@ -80,14 +83,6 @@ export function isPlaybackRendererEnabled(): boolean {
  */
 export function isEditorRendererEnabled(): boolean {
   return readBoolean(process.env.NEXT_PUBLIC_MAIC_EDITOR_RENDERER_ENABLED);
-}
-
-/**
- * Experimental Pi-based classroom chat runtime. Default OFF. The same public
- * flag selects the client runtime and gates the corresponding server route.
- */
-export function isPiChatEnabled(): boolean {
-  return readBoolean(process.env.NEXT_PUBLIC_PI_CHAT_ENABLED);
 }
 
 /**

@@ -6,9 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   sendMessage: vi.fn(),
+  whiteboardOpen: false,
+  runtimeProjection: null as {
+    stageId: string;
+    lastSeq: number | null;
+    whiteboard: import('@/lib/types/stage').Whiteboard | null;
+  } | null,
   roundtableProps: undefined as Record<string, unknown> | undefined,
   canvasProps: undefined as Record<string, unknown> | undefined,
-  piEnabled: true,
   coursewareReferenceEnabled: true,
   topicActive: false,
   engineMode: 'idle' as 'idle' | 'playing' | 'paused',
@@ -87,7 +92,7 @@ const interactiveScene = {
 
 const stageState = {
   mode: 'playback',
-  stage: { id: 'stage-1', whiteboard: [] },
+  stage: { id: 'stage-1', whiteboard: [] as import('@/lib/types/stage').Whiteboard[] },
   getCurrentScene: () =>
     stageState.scenes.find((candidate) => candidate.id === stageState.currentSceneId),
   scenes: [scene, secondScene] as Array<typeof scene | typeof interactiveScene>,
@@ -104,6 +109,7 @@ vi.mock('@/lib/store', () => {
     use: {
       failedOutlines: () => [],
       generationComplete: () => true,
+      generationInterrupted: () => false,
     },
     getState: () => stageState,
   });
@@ -113,10 +119,18 @@ vi.mock('@/lib/store', () => {
 vi.mock('@/lib/store/canvas', () => ({
   useCanvasStore: {
     use: {
-      whiteboardOpen: () => false,
-      setWhiteboardOpenManually: () => vi.fn(),
+      whiteboardOpen: () => mocks.whiteboardOpen,
+      runtimeWhiteboardProjection: () => mocks.runtimeProjection,
+      whiteboardClearing: () => false,
+      setWhiteboardOpenManually: () => (open: boolean) => {
+        mocks.whiteboardOpen = open;
+      },
     },
-    getState: () => ({ whiteboardOpen: false }),
+    getState: () => ({
+      whiteboardOpen: mocks.whiteboardOpen,
+      runtimeWhiteboardProjection: mocks.runtimeProjection,
+      whiteboardClearing: false,
+    }),
   },
 }));
 
@@ -354,7 +368,6 @@ vi.mock('@/lib/orchestration/registry/store', () => ({
   ),
 }));
 vi.mock('@/lib/config/feature-flags', () => ({
-  isPiChatEnabled: () => mocks.piEnabled,
   isCoursewareReferenceEnabled: () => mocks.coursewareReferenceEnabled,
 }));
 
@@ -369,11 +382,13 @@ describe('PlaybackChromeRoot element-reference ownership', () => {
 
   beforeEach(() => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    mocks.whiteboardOpen = false;
+    mocks.runtimeProjection = null;
+    stageState.stage.whiteboard = [];
     mocks.sendMessage.mockReset();
     mocks.sendMessage.mockResolvedValue(undefined);
     mocks.roundtableProps = undefined;
     mocks.canvasProps = undefined;
-    mocks.piEnabled = true;
     mocks.coursewareReferenceEnabled = true;
     mocks.topicActive = false;
     mocks.engineMode = 'idle';
@@ -424,6 +439,159 @@ describe('PlaybackChromeRoot element-reference ownership', () => {
       await Promise.resolve();
     });
   }
+
+  it('selects the stage snapshot whiteboard and sends an identity-only reference', async () => {
+    const board = {
+      id: 'board',
+      viewportSize: 1000,
+      viewportRatio: 0.5625,
+      elements: [textElement as import('@openmaic/dsl').PPTElement],
+    };
+    mocks.whiteboardOpen = true;
+    stageState.stage.whiteboard = [board];
+    await renderOwner();
+    expect(mocks.roundtableProps?.canPickSlideElement).toBe(true);
+    click('toggle-pick');
+    act(() =>
+      (mocks.canvasProps?.onPickWhiteboardElement as (element: unknown) => void)(textElement),
+    );
+    expect(mocks.canvasProps?.elementPickActive).toBe(false);
+    expect(container.querySelector('[data-testid="owner-pill"]')?.textContent).toContain(
+      'whiteboard.title · Text · First grounded fact',
+    );
+    expect((mocks.roundtableProps?.canSendMessage as () => boolean)()).toBe(true);
+    click('send');
+    expect(mocks.sendMessage.mock.calls[0][1].elementReference).toEqual({
+      kind: 'whiteboard_element',
+      whiteboardId: 'board',
+      elementId: 'text-1',
+    });
+    act(() =>
+      mocks.sendMessage.mock.calls[0][1].onResponseAccepted(
+        new Response('', { headers: { 'X-OpenMAIC-Element-Reference-Accepted': '1' } }),
+      ),
+    );
+    expect(container.querySelector('[data-testid="owner-pill"]')).toBeNull();
+  });
+
+  it.each([false, true])(
+    'disables selection under runtime authority (already armed: %s)',
+    async (alreadyArmed) => {
+      const board = {
+        id: 'board',
+        viewportSize: 1000,
+        viewportRatio: 0.5625,
+        elements: [textElement as import('@openmaic/dsl').PPTElement],
+      };
+      mocks.whiteboardOpen = true;
+      stageState.stage.whiteboard = [board];
+      if (alreadyArmed) {
+        await renderOwner();
+        click('toggle-pick');
+        expect(mocks.canvasProps?.elementPickActive).toBe(true);
+      }
+      mocks.runtimeProjection = { stageId: 'stage-1', lastSeq: 7, whiteboard: board };
+      await renderOwner();
+      expect(mocks.roundtableProps?.canPickSlideElement).toBe(false);
+      click('toggle-pick');
+      expect(mocks.canvasProps?.elementPickActive).toBe(false);
+      act(() =>
+        (mocks.canvasProps?.onPickWhiteboardElement as (element: unknown) => void)(textElement),
+      );
+      expect(container.querySelector('[data-testid="owner-pill"]')).toBeNull();
+    },
+  );
+
+  it('keeps a stale whiteboard selection visible and blocks sending until reselected or removed', async () => {
+    mocks.whiteboardOpen = true;
+    stageState.stage.whiteboard = [
+      {
+        id: 'board',
+        viewportSize: 1000,
+        viewportRatio: 0.5625,
+        elements: [textElement as import('@openmaic/dsl').PPTElement],
+      },
+    ];
+    await renderOwner();
+    click('toggle-pick');
+    act(() =>
+      (mocks.canvasProps?.onPickWhiteboardElement as (element: unknown) => void)(textElement),
+    );
+    stageState.stage.whiteboard[0].elements = [];
+    await rerenderOwner();
+    expect((mocks.roundtableProps?.canSendMessage as () => boolean)()).toBe(false);
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-testid="owner-pill"]')).not.toBeNull();
+    act(() => (mocks.roundtableProps?.onClearElementReference as () => void)());
+    expect((mocks.roundtableProps?.canSendMessage as () => boolean)()).toBe(true);
+  });
+
+  it('does not clear a slide draft merely because the whiteboard opens', async () => {
+    await renderOwner();
+    click('toggle-pick');
+    click('pick-text');
+    mocks.whiteboardOpen = true;
+    await rerenderOwner();
+    expect(container.querySelector('[data-testid="owner-pill"]')?.textContent).toContain('Page 1');
+  });
+
+  describe('whiteboard transitions end an armed picker', () => {
+    const pickableBoard = () => ({
+      id: 'board',
+      viewportSize: 1000,
+      viewportRatio: 0.5625,
+      elements: [textElement as import('@openmaic/dsl').PPTElement],
+    });
+
+    it.each([
+      ['manual close', true, 'toggle'],
+      ['manual open', false, 'toggle'],
+      ['automatic close', true, 'store'],
+      ['automatic open', false, 'store'],
+    ] as const)('%s', async (_label, startsOpen, trigger) => {
+      stageState.stage.whiteboard = [pickableBoard()];
+      mocks.whiteboardOpen = startsOpen;
+      await renderOwner();
+      click('toggle-pick');
+      expect(mocks.canvasProps?.elementPickActive).toBe(true);
+
+      if (trigger === 'toggle') {
+        act(() => (mocks.canvasProps?.onWhiteboardClose as () => void)());
+      } else {
+        mocks.whiteboardOpen = !startsOpen;
+      }
+      await rerenderOwner();
+
+      expect(mocks.whiteboardOpen).toBe(!startsOpen);
+      // The destination surface is pickable, so only the transition cancels.
+      expect(mocks.roundtableProps?.canPickSlideElement).toBe(true);
+      expect(mocks.canvasProps?.elementPickActive).toBe(false);
+    });
+
+    it('keeps an armed picker across re-renders without a transition', async () => {
+      stageState.stage.whiteboard = [pickableBoard()];
+      await renderOwner();
+      click('toggle-pick');
+      await rerenderOwner();
+      expect(mocks.canvasProps?.elementPickActive).toBe(true);
+    });
+
+    it('keeps a selected whiteboard draft when the whiteboard closes', async () => {
+      stageState.stage.whiteboard = [pickableBoard()];
+      mocks.whiteboardOpen = true;
+      await renderOwner();
+      click('toggle-pick');
+      act(() =>
+        (mocks.canvasProps?.onPickWhiteboardElement as (element: unknown) => void)(textElement),
+      );
+      mocks.whiteboardOpen = false;
+      await rerenderOwner();
+      expect(mocks.canvasProps?.elementPickActive).toBe(false);
+      expect(container.querySelector('[data-testid="owner-pill"]')?.textContent).toContain(
+        'whiteboard.title · Text · First grounded fact',
+      );
+    });
+  });
 
   it('owns pick state, freezes one request snapshot, and clears only on an accepted receipt', async () => {
     await renderOwner();
@@ -531,24 +699,6 @@ describe('PlaybackChromeRoot element-reference ownership', () => {
       );
     },
   );
-
-  it('hides the entry and sends an ordinary unreferenced message when Pi is off', async () => {
-    mocks.piEnabled = false;
-    await renderOwner();
-
-    expect(mocks.roundtableProps).toMatchObject({
-      showElementReference: false,
-      canPickSlideElement: false,
-      elementPickActive: false,
-    });
-    expect(container.querySelector('[data-testid="toggle-pick"]')).toBeNull();
-
-    click('send');
-
-    expect(mocks.handleUserInterrupt).not.toHaveBeenCalled();
-    expect(mocks.sendMessage).toHaveBeenCalledOnce();
-    expect(mocks.sendMessage).toHaveBeenCalledWith('Explain this', undefined);
-  });
 
   it('keeps Pi messaging available while the independent reference gate clears its UI state', async () => {
     await renderOwner();
