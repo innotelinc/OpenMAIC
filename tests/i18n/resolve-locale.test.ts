@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { matchLocale, resolveRequestLocale } from '@/lib/i18n/resolve-locale';
+import { defaultLocale } from '@/lib/i18n/types';
 
 describe('matchLocale', () => {
   it('matches supported tags exactly, ignoring case', () => {
@@ -39,7 +40,7 @@ describe('resolveRequestLocale', () => {
   });
 
   it('falls back to defaultLocale', () => {
-    expect(resolveRequestLocale({})).toBe('zh-CN');
-    expect(resolveRequestLocale({ cookie: '', acceptLanguage: 'xx, *' })).toBe('zh-CN');
+    expect(resolveRequestLocale({})).toBe(defaultLocale);
+    expect(resolveRequestLocale({ cookie: '', acceptLanguage: 'xx, *' })).toBe(defaultLocale);
   });
 });

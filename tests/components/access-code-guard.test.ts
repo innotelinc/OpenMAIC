@@ -56,15 +56,18 @@ function renderGuardedPage() {
   };
 }
 
-it('mounts the page again once the access code is accepted, so its requests are resent', async () => {
+it('mounts the page only once the access code is accepted, so its requests go out authorized', async () => {
   stubStatus({ enabled: true, authenticated: false });
   const { root, mounts, render } = renderGuardedPage();
   await act(async () => render());
-  expect(mounts.count).toBe(1);
+  // Nothing under the gate mounts before the code is accepted: a pre-auth mount
+  // sends the page's own requests without the cookie, and their 401s surface as
+  // "Persistence is unavailable".
+  expect(mounts.count).toBe(0);
   expect(modal.onSuccess).not.toBeNull();
 
   await act(async () => modal.onSuccess!());
-  expect(mounts.count).toBe(2);
+  expect(mounts.count).toBe(1);
   // The one-time import of this browser's earlier courses is resumed too.
   await vi.waitFor(() => expect(legacyImport.resume).toHaveBeenCalledTimes(1));
   await act(async () => root.unmount());

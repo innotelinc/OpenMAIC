@@ -61,6 +61,14 @@ function runPublish(options: RunOptions = {}) {
     SEMVER_PACKAGE_JSON: semverPackageJsonPath,
     SOURCE_REPO: options.sourceRepo ?? 'THU-MAIC/OpenMAIC',
     STUB_CALLS: callsPath,
+    // The script resolves the commit with `git rev-parse HEAD`. When the
+    // checkout belongs to another uid — a CI runner that clones as root, a
+    // container running as root over a bind mount — git refuses the repository
+    // as dubious and exits 128 before the script's own assertions can run.
+    // Trust this checkout for the child process only.
+    GIT_CONFIG_COUNT: '1',
+    GIT_CONFIG_KEY_0: 'safe.directory',
+    GIT_CONFIG_VALUE_0: resolve(repositoryRoot),
   });
   if (options.preflight !== undefined) {
     env.STUB_PREFLIGHT_JSON = JSON.stringify(options.preflight);
