@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, ReactNode } from 'react';
+import { Fragment, useEffect, useState, ReactNode } from 'react';
 import { AccessCodeModal } from '@/components/access-code-modal';
 import { useSettingsStore } from '@/lib/store/settings';
 
@@ -10,6 +10,9 @@ export function AccessCodeGuard({ children }: { children: ReactNode }) {
     authenticated: boolean;
     loading: boolean;
   }>({ enabled: false, authenticated: false, loading: true });
+  // Remount the page once the code is accepted: its first mount happened
+  // before there was an access cookie, so everything it fetched was refused.
+  const [grantedCount, setGrantedCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,6 +39,10 @@ export function AccessCodeGuard({ children }: { children: ReactNode }) {
   }, []);
 
   const needsAuth = !status.loading && status.enabled && !status.authenticated;
+  // Nothing under the gate mounts until the gate has answered, and only when
+  // it is satisfied. A pre-auth mount sent the page's library requests without
+  // a cookie, and their 401s were surfaced as "Persistence is unavailable".
+  const ready = !status.loading && !needsAuth;
 
   return (
     <>
@@ -44,6 +51,7 @@ export function AccessCodeGuard({ children }: { children: ReactNode }) {
           open={true}
           onSuccess={() => {
             setStatus((s) => ({ ...s, authenticated: true }));
+            setGrantedCount((n) => n + 1);
             // ServerProvidersInit runs on mount, which on an ACCESS_CODE-gated
             // deployment is before any access cookie exists: the middleware
             // answers 401 and the store silently keeps its blank defaults.
@@ -54,7 +62,7 @@ export function AccessCodeGuard({ children }: { children: ReactNode }) {
           }}
         />
       )}
-      {children}
+      {ready && <Fragment key={grantedCount}>{children}</Fragment>}
     </>
   );
 }
