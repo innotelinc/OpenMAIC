@@ -42,6 +42,7 @@ export function AccessCodeGuard({ children }: { children: ReactNode }) {
   }, []);
 
   const needsAuth = !status.loading && status.enabled && !status.authenticated;
+  const ready = !status.loading && !needsAuth;
 
   return (
     <>
@@ -72,7 +73,11 @@ export function AccessCodeGuard({ children }: { children: ReactNode }) {
           }}
         />
       )}
-      <Fragment key={grantedCount}>{children}</Fragment>
+      {/* Nothing under the gate mounts until the gate has answered, and only
+          when it is satisfied: a pre-auth mount sends the page's library
+          requests without a cookie, and their 401s were surfaced as
+          "Persistence is unavailable". */}
+      {ready && <Fragment key={grantedCount}>{children}</Fragment>}
     </>
   );
 }

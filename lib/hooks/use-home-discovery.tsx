@@ -130,6 +130,12 @@ export function useHomeDiscovery({
         },
         fail: (err) => {
           log.error('Failed to load classrooms:', err);
+          // Unauthenticated, not unavailable: the gate prompts for the code.
+          if ((err as { status?: number }).status === 401) {
+            stateRef.current = 'ready';
+            setState('ready');
+            return;
+          }
           // A background reconciliation must not replace an already-usable tree
           // with error chrome because of one transient read failure. Initial
           // loading and explicit retries still surface the persistence error.

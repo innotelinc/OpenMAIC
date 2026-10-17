@@ -731,7 +731,12 @@ export async function listStages(): Promise<StageListItem[]> {
   try {
     const res = await fetch('/api/stages', { credentials: 'include' });
     if (!res.ok) {
-      throw new Error(`Failed to list owner stages: HTTP ${res.status}`);
+      const err = new Error(`Failed to list owner stages: HTTP ${res.status}`);
+      // The gate answers 401 for a caller with no access cookie; that is an
+      // authentication state, not a storage failure, and the page must not
+      // report it as one.
+      (err as Error & { status?: number }).status = res.status;
+      throw err;
     }
     const body = (await res.json().catch(() => null)) as { stages?: unknown } | null;
     if (!body || !Array.isArray(body.stages)) {

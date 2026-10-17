@@ -278,6 +278,10 @@ function HomePage() {
       retainThumbnails(new Set(list.map((c) => c.id)));
     } catch (err) {
       log.error('Failed to load classrooms:', err);
+      // A 401 means the access gate has not let this browser in yet; the gate
+      // owns that state and says so itself. Calling it a persistence outage
+      // sent people looking at the database.
+      if ((err as { status?: number }).status === 401) return;
       toast.error('Persistence is unavailable. Saved classrooms could not be loaded.');
     }
   };
