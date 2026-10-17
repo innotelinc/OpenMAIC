@@ -93,251 +93,67 @@ export const MODALITY_ORDER: TokenPlanModality[] = [
  * already covered by the add-provider flow, and listing them under "Token Plan"
  * muddied the "one key, every modality" promise.
  *
- * - TokenDance: LLM/image/video/TTS/web-search through one gateway key.
- * - MiniMax: LLM/image/video/TTS/web-search adapters.
- * - Volcengine Ark Agent Plan: LLM/image/video/TTS/web-search via the plan key.
- * - Kimi Coding Plan: LLM/web-search/web-fetch via the plan key.
+ * This deployment ships exactly one: OmniRoute, the estate's own gateway. The
+ * vendor plans this list used to carry (TokenDance, MiniMax, Volcengine Ark,
+ * Kimi) are gone — every model we run comes through the gateway, and a second
+ * key for a vendor is a key nobody should paste.
  */
 export const TOKEN_PLAN_PRESETS: TokenPlanPreset[] = [
-  // ── Gateway token plan (one key, vendor wire formats) ─────────────────────
+  // ── Our gateway (one key, every modality it adapts) ──────────────────────
   {
-    // TokenDance is a model gateway. Chat and image generation are
-    // OpenAI-compatible at /gateway/v1; the same key also authenticates
-    // vendor-protocol routes on the same host that keep each vendor's wire
-    // format, so the existing adapters are reused with the route prefix as
-    // their base URL: Ark (/gateway/ark/v3) for Seedream, MiniMax
-    // (/gateway/minimax) for TTS and video, Bocha (/gateway/bocha) for web
-    // search. The public catalogue is listed at /gateway/v1/models. Video
-    // models are the H3 family, which only speak MiniMax's v2 task API.
-    id: 'tokendance',
-    name: 'TokenDance',
-    websiteUrl: 'https://tokendance.space',
+    // OmniRoute is the estate's single model gateway. One key spans chat,
+    // image generation, video generation and speech on OpenAI-compatible
+    // paths under /v1, so this plan reuses the adapters that already speak
+    // that wire format and only points them at the gateway. Web search and web
+    // fetch are deliberately not listed: OmniRoute serves them on its own
+    // shapes (/v1/search, /v1/web/fetch) and this app has no adapter for
+    // either yet — declaring them here would light up a slot that cannot work.
+    id: 'omniroute',
+    name: 'OmniRoute',
+    websiteUrl: 'https://omniroute.innotel.us',
     apiKeyPlaceholder: 'sk-...',
-    icon: '/logos/tokendance.svg',
     category: 'token_plan',
     modalities: {
       llm: {
-        providerId: 'tokendance',
-        baseUrl: 'https://tokendance.space/gateway/v1',
+        // The gateway's chat face is the OpenAI wire format, so this is the
+        // built-in openai provider pointed at the gateway instead of OpenAI.
+        providerId: 'openai',
+        baseUrl: 'http://192.168.1.71:20128/v1',
         apiFormat: 'openai',
-        // The plan's own model family is its primary course-generation set: base
-        // drives the mainline while slide/interactive cover courseware and
-        // interactive pages; the Pro agent runs on DeepSeek V4.1 Flash.
         defaultModels: [
-          'cogevol-base',
-          'cogevol-slide-0828',
-          'cogevol-interactive-0828',
-          'deepseek-v4.1-flash',
-          'deepseek-v4-pro',
-          'glm-5.3',
-          'kimi-k3',
-          'qwen3.8-max',
-          'seed-2.1-pro',
-          'minimax-m3',
+          'auto/best-chat',
+          'auto/best-coding',
+          'auto/best-reasoning',
+          'auto/best-fast',
+          'auto/best-free',
+          'gemini/gemini-2.5-flash',
         ],
-        defaultModelId: 'cogevol-base',
+        defaultModelId: 'auto/best-chat',
         stageRoutes: {
-          'scene-content:slide': 'cogevol-slide-0828',
-          'scene-content:interactive': 'cogevol-interactive-0828',
-          // The Pro agent needs dependable tool calling: a general model.
-          'maic-agent-driver': 'deepseek-v4.1-flash',
+          'scene-content:slide': 'auto/best-coding',
+          'scene-content:interactive': 'auto/best-coding',
+          // The Pro agent needs dependable tool calling.
+          'maic-agent-driver': 'auto/best-chat',
         },
       },
       image: {
-        providerId: 'seedream',
-        baseUrl: 'https://tokendance.space/gateway/ark/v3',
-        defaultModels: ['seedream-5.0-lite', 'seedream-5.0-pro'],
+        providerId: 'openai-image',
+        baseUrl: 'http://192.168.1.71:20128/v1',
+        defaultModels: ['codex/gpt-5.6-luna-image', 'codex/gpt-5.6-terra-image'],
       },
       video: {
-        providerId: 'minimax-video',
-        baseUrl: 'https://tokendance.space/gateway/minimax',
-        defaultModels: ['minimax-h3', 'minimax-h3-max'],
+        // OpenAI-style video: POST /videos/generations, which is exactly what
+        // the gateway documents for video.
+        providerId: 'grok-video',
+        baseUrl: 'http://192.168.1.71:20128/v1',
+        defaultModels: ['veoaifree-web/seedance', 'veoaifree-web/veo'],
       },
       tts: {
-        providerId: 'minimax-tts',
-        baseUrl: 'https://tokendance.space/gateway/minimax',
-        defaultModelId: 'minimax-speech-2.8-turbo',
-        defaultModels: ['minimax-speech-2.8-turbo', 'minimax-speech-2.8-hd'],
+        providerId: 'openai-tts',
+        baseUrl: 'http://192.168.1.71:20128/v1',
+        defaultModelId: 'openai/tts-1',
+        defaultModels: ['openai/tts-1'],
       },
-      webSearch: {
-        providerId: 'bocha',
-        baseUrl: 'https://tokendance.space/gateway/bocha',
-      },
-    },
-  },
-
-  // ── Full-set token plan (template) ────────────────────────────────────────
-  {
-    id: 'minimax',
-    name: 'MiniMax',
-    websiteUrl: 'https://platform.minimaxi.com',
-    apiKeyPlaceholder: 'sk-...',
-    icon: '/logos/minimax.svg',
-    category: 'token_plan',
-    modalities: {
-      llm: {
-        providerId: 'minimax',
-        baseUrl: 'https://api.minimaxi.com/anthropic/v1',
-        apiFormat: 'anthropic',
-        defaultModels: [
-          'MiniMax-M3',
-          'MiniMax-M2.7',
-          'MiniMax-M2.7-highspeed',
-          'MiniMax-M2.5',
-          'MiniMax-M2.5-highspeed',
-          'MiniMax-M2.1',
-          'MiniMax-M2.1-highspeed',
-          'MiniMax-M2',
-        ],
-      },
-      image: {
-        providerId: 'minimax-image',
-        baseUrl: 'https://api.minimaxi.com',
-        defaultModels: ['image-01', 'image-01-live'],
-      },
-      video: {
-        providerId: 'minimax-video',
-        baseUrl: 'https://api.minimaxi.com',
-        defaultModels: ['MiniMax-Hailuo-2.3', 'MiniMax-Hailuo-02', 'T2V-01-Director', 'T2V-01'],
-      },
-      tts: {
-        providerId: 'minimax-tts',
-        baseUrl: 'https://api.minimaxi.com',
-        defaultModelId: 'speech-2.8-turbo',
-        defaultModels: [
-          'speech-2.8-hd',
-          'speech-2.8-turbo',
-          'speech-2.6-hd',
-          'speech-2.6-turbo',
-          'speech-02-hd',
-          'speech-02-turbo',
-        ],
-      },
-      webSearch: { providerId: 'minimax', baseUrl: 'https://api.minimaxi.com' },
-    },
-  },
-
-  // ── Vendor token plans (LLM; one key, often spans many models) ────────────
-  {
-    // Volcengine Ark Agent Plan. The ark--prefixed plan key authenticates only
-    // against the dedicated /api/plan endpoint (OpenAI-compatible at
-    // /api/plan/v3); the general /api/v3 and Coding Plan /api/coding endpoints
-    // reject it ("API key format is incorrect"). The plan exposes no /models
-    // list (404), so we carry the published model set as the curated catalogue.
-    // ark-code-latest is an auto-routing alias valid on every tier; lower tiers
-    // may not include every model below — those simply error at generation, no
-    // silent pruning.
-    id: 'volcengine-ark',
-    name: '火山方舟 Agent Plan',
-    websiteUrl: 'https://console.volcengine.com/ark',
-    apiKeyPlaceholder: 'ark-...',
-    icon: '/logos/volcengine.svg',
-    category: 'token_plan',
-    modalities: {
-      llm: {
-        providerId: 'doubao',
-        baseUrl: 'https://ark.cn-beijing.volces.com/api/plan/v3',
-        apiFormat: 'openai',
-        defaultModels: [
-          'doubao-seed-2.1-turbo',
-          'ark-code-latest',
-          'doubao-seed-2.0-pro',
-          'doubao-seed-2.0-code',
-          'doubao-seed-2.0-lite',
-          'doubao-seed-2.0-mini',
-          'deepseek-v4-pro',
-          'deepseek-v4-flash',
-          'deepseek-v3.2',
-          'minimax-m3',
-          'minimax-m2.7',
-          'glm-5.2',
-          'glm-5.1',
-          'kimi-k2.7-code',
-          'kimi-k2.6',
-        ],
-        defaultModelId: 'doubao-seed-2.1-turbo',
-      },
-      // Image: Agent Plan documentation and user-facing guides consistently
-      // expose Seedream 5.0 Lite via the dotted plan alias, not the pay-as-you-go
-      // dated catalog id. The adapter routes by baseUrl path (/api/plan/v3 →
-      // /images/generations).
-      image: {
-        providerId: 'seedream',
-        baseUrl: 'https://ark.cn-beijing.volces.com/api/plan/v3',
-        defaultModels: ['doubao-seedream-5.0-lite'],
-      },
-      // Video: list the highest Agent Plan offering first. Lower tiers can
-      // reject 2.0 with UnsupportedModel while still allowing 1.5-pro; we keep
-      // both in the catalogue and let generation-time errors reflect the user's
-      // actual plan tier.
-      video: {
-        providerId: 'seedance',
-        baseUrl: 'https://ark.cn-beijing.volces.com/api/plan/v3',
-        defaultModels: [
-          'doubao-seedance-2.0-mini',
-          'doubao-seedance-2.0',
-          'doubao-seedance-1.5-pro',
-        ],
-      },
-      // Web search: 豆包搜索 (Custom 版). Unlike the LLM/image/video modalities,
-      // this lives on its OWN host (open.feedcoopapi.com, not the ark plan
-      // endpoint) and authenticates with the same Agent Plan key as a Bearer
-      // token (verified). 500 free calls/month per Volcengine account.
-      webSearch: {
-        providerId: 'doubao',
-        baseUrl: 'https://open.feedcoopapi.com',
-      },
-      // TTS: Doubao Seed-TTS 2.0. Yet another host (openspeech.bytedance.com)
-      // with its own auth — the Agent Plan single key goes in `X-Api-Key` on the
-      // /api/plan/tts endpoint (verified: the normal /api/v3/tts endpoint 401s a
-      // plan key, and the plan endpoint rejects Bearer). The doubao-tts adapter
-      // detects the single-key (no colon) shape and switches to X-Api-Key auth.
-      tts: {
-        providerId: 'doubao-tts',
-        baseUrl: 'https://openspeech.bytedance.com/api/v3/plan/tts',
-        defaultModelId: 'seed-tts-2.0',
-        defaultModels: ['seed-tts-2.0'],
-      },
-    },
-  },
-  // ── Kimi Coding Plan (last = lowest priority) ───────────────────────────
-  // The Coding Plan key authenticates against the plan's DEDICATED
-  // endpoint (https://www.kimi.com/code/docs/) — api.kimi.com/coding/v1,
-  // international api.kimi.ai/coding/v1 — NOT Moonshot's Open Platform
-  // (api.moonshot.cn/v1): sending plan keys there fails with
-  // "Not found the model kimi-for-coding or Permission denied" (review P0 on
-  // #1664). The plan uses the existing `kimi` registry adapters for chat,
-  // search and fetch, with one Coding Plan key and base URL. Its workspace
-  // provider uses the `kimi-coding-plan` preset, keeping personal Kimi keys
-  // separate. Connecting intentionally takes over the declared slots (see
-  // #1645), subject to administrator locks and the user's conflict choice;
-  // disconnecting removes the plan's assignments and restores server defaults
-  // (the implicit builtin reader for fetch when no reader was configured).
-  // The mainline defaults to `kimi-for-coding`; every follow-mainline LLM
-  // station inherits it. Image/video/TTS are not declared and stay untouched.
-  // Priority note: placed LAST in TOKEN_PLAN_PRESETS, so Kimi yields only
-  // slots that a higher-priority connected plan also recommends.
-  {
-    id: 'kimi',
-    name: 'Kimi',
-    websiteUrl: 'https://www.kimi.com/code?aff=openmaic',
-    subscribeUrls: {
-      domestic: 'https://www.kimi.com/code?aff=openmaic',
-      international: 'https://www.kimi.ai/code?aff=openmaic',
-    },
-    apiKeyPlaceholder: 'sk-...',
-    icon: '/logos/kimi.png',
-    category: 'token_plan',
-    modalities: {
-      llm: {
-        providerId: 'kimi',
-        baseUrl: 'https://api.kimi.com/coding/v1',
-        apiFormat: 'openai',
-        defaultModels: ['k3', 'k3-256k', 'kimi-for-coding', 'kimi-for-coding-highspeed'],
-        defaultModelId: 'kimi-for-coding',
-      },
-      webSearch: { providerId: 'kimi', baseUrl: 'https://api.kimi.com/coding/v1' },
-      webFetch: { providerId: 'kimi', baseUrl: 'https://api.kimi.com/coding/v1' },
     },
   },
 ];
