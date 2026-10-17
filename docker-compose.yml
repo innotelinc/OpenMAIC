@@ -34,6 +34,10 @@ services:
       # (for example an external DATABASE_URL) overrides the default.
       - docker-compose.defaults.env
       - .env.local
+      # The secrets resolved from Cerulean Vault (OMNIROUTE_API_KEY), written by
+      # scripts/vault-env.mjs from .env.classroom-secrets.example. Read last, so
+      # a value that comes from the vault wins over anything left in .env.local.
+      - .env.classroom-secrets
     depends_on:
       postgres:
         condition: service_healthy
@@ -53,9 +57,11 @@ services:
       - default # outbound internet (LLM/media provider APIs, etc.)
       - render # reach the render service over the isolated network
     volumes:
-      # Optional: the model configuration (copy openmaic.example.yml to
-      # openmaic.yml first; a missing file would be mounted as a directory).
-      # - ./openmaic.yml:/app/openmaic.yml:ro
+      # This deployment's model configuration: every slot runs on the estate's
+      # OmniRoute gateway, with the self-hosted SearXNG and MinerU for search
+      # and parsing. Mounted rather than baked in, so a provider change is an
+      # edit here plus a restart instead of an image rebuild.
+      - ./openmaic.yml:/app/openmaic.yml:ro
       # Legacy, read only when there is no openmaic.yml:
       # - ./server-providers.yml:/app/server-providers.yml:ro
       - openmaic-data:/app/data

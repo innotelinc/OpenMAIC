@@ -53,9 +53,9 @@ providers:
   openai-image:                    # 同一把 key，用於圖像生成
     preset: openai-image
     apiKey: ${OPENAI_API_KEY}
-  minimax:                         # Token Plan：對話、圖像、影片、TTS、搜尋
-    preset: minimax
-    apiKey: ${MINIMAX_API_KEY}
+  omniroute:
+    preset: omniroute
+    apiKey: ${OMNIROUTE_API_KEY}
   tavily:
     preset: tavily
     apiKey: ${TAVILY_API_KEY}
@@ -70,14 +70,14 @@ slots:
     model: anthropic:claude-sonnet-4-6
     fallback: openai:gpt-5.4-mini  # 遇到可重試的失敗時改用一次
   course.content.slide:
-    model: minimax:MiniMax-M3
+    model: omniroute:auto/best-coding
     thinking: { enabled: false }
-    fallback: minimax:MiniMax-M2.7
+    fallback: omniroute:auto/best-chat
   classroom: local:qwen3:8b        # 模型 ID 可以包含冒號
   agent:
     model: openai:gpt-5.5          # 需要支援工具呼叫
     api: openai-completions
-  tts: minimax:speech-2.8-turbo
+  tts: omniroute:gtts/default
   image: openai-image:gpt-image-2
   webSearch: tavily                # 只寫供應商：使用它的預設模型
   video: null                      # 預設關閉；使用者可以自行開啟

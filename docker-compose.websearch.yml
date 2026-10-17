@@ -1,5 +1,18 @@
 # Keyless web search for the classroom's research step, on the classroom's own
 # network. Its own project so the classroom's compose file stays upstream-clean.
+#
+# Bring it up with the secrets the deploy resolved from Cerulean Vault, which is
+# what supplies SEARXNG_SECRET (the value itself lives at
+# cerulean/openmaic#SEARXNG_SECRET, never in this repository):
+#
+#   node scripts/vault-env.mjs --in .env.classroom-secrets.example \
+#       --out .env.classroom-secrets
+#   docker compose --env-file .env.classroom-secrets -f docker-compose.websearch.yml up -d
+#
+# searxng/settings.yml deliberately carries no secret_key: SearXNG prefers
+# SEARXNG_SECRET over the file, and refuses to start without a secret, so a
+# resolution that did not happen stops the container instead of running every
+# classroom on one value read from git.
 name: openmaic-websearch
 
 services:
@@ -9,6 +22,9 @@ services:
     restart: unless-stopped
     # Small and bounded: it only serves the classroom's research queries.
     mem_limit: 1g
+    environment:
+      # Required, not defaulted: an empty secret is a deployment mistake.
+      - SEARXNG_SECRET=${SEARXNG_SECRET:?resolve it from the vault (cerulean/openmaic#SEARXNG_SECRET)}
     volumes:
       - ./searxng:/etc/searxng:rw
     networks:

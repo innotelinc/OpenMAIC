@@ -140,36 +140,19 @@ slots:
 <details>
 <summary><b>更多示例</b>：Token Plan、小米 MiMo 与智谱 GLM、Amazon Bedrock</summary>
 
-MiniMax Token Plan 快速示例（一个 Key 同时覆盖对话、图像、视频、TTS 与联网搜索；`tokendance` 用法相同）：
+OmniRoute 快速示例 —— 平台的网关，一个密钥即可用于对话、图像、视频与语音：
 
 ```yaml
 providers:
-  minimax:
-    preset: minimax
-    apiKey: ${MINIMAX_API_KEY}
+  omniroute:
+    preset: omniroute
+    apiKey: ${OMNIROUTE_API_KEY}
 
 slots:
-  llm: minimax:MiniMax-M3
-  image: minimax                   # 只写服务商 ID：使用该套餐的默认模型
-  video: minimax
-  tts: minimax
-  webSearch: minimax
-```
-
-TokenDance 快速示例（默认模型选速度快、长上下文的模型）：
-
-```yaml
-providers:
-  tokendance:
-    preset: tokendance
-    apiKey: ${TOKENDANCE_API_KEY}
-
-slots:
-  llm: tokendance:deepseek-v4.1-flash
-  image: tokendance
-  video: tokendance
-  tts: tokendance
-  webSearch: tokendance
+  llm: omniroute:auto/best-chat
+  image: omniroute                 # 只写服务商 ID：使用该套餐的默认模型
+  video: omniroute
+  tts: omniroute
 ```
 
 小米 MiMo Token Plan 与智谱 GLM 快速示例：

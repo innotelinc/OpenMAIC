@@ -140,36 +140,19 @@ The slots you write are the server's defaults; users can change them, or connect
 <details>
 <summary><b>More examples</b>: token plans, Xiaomi MiMo and GLM, Amazon Bedrock</summary>
 
-MiniMax token plan quick example (one key for chat, image, video, TTS and web search; `tokendance` works the same way):
+OmniRoute quick example — the estate's gateway, one key for chat, images, video and speech:
 
 ```yaml
 providers:
-  minimax:
-    preset: minimax
-    apiKey: ${MINIMAX_API_KEY}
+  omniroute:
+    preset: omniroute
+    apiKey: ${OMNIROUTE_API_KEY}
 
 slots:
-  llm: minimax:MiniMax-M3
-  image: minimax                   # a provider id alone: the plan's default model
-  video: minimax
-  tts: minimax
-  webSearch: minimax
-```
-
-TokenDance quick example with a fast long-context default model:
-
-```yaml
-providers:
-  tokendance:
-    preset: tokendance
-    apiKey: ${TOKENDANCE_API_KEY}
-
-slots:
-  llm: tokendance:deepseek-v4.1-flash
-  image: tokendance
-  video: tokendance
-  tts: tokendance
-  webSearch: tokendance
+  llm: omniroute:auto/best-chat
+  image: omniroute                 # a provider id alone: the plan's default model
+  video: omniroute
+  tts: omniroute
 ```
 
 Xiaomi MiMo Token Plan and GLM (Zhipu) quick example:

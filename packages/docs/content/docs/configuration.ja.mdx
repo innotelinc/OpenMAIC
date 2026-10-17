@@ -53,9 +53,9 @@ providers:
   openai-image:                    # 同じキーを画像生成に使う
     preset: openai-image
     apiKey: ${OPENAI_API_KEY}
-  minimax:                         # Token Plan：チャット、画像、動画、TTS、検索
-    preset: minimax
-    apiKey: ${MINIMAX_API_KEY}
+  omniroute:
+    preset: omniroute
+    apiKey: ${OMNIROUTE_API_KEY}
   tavily:
     preset: tavily
     apiKey: ${TAVILY_API_KEY}
@@ -70,14 +70,14 @@ slots:
     model: anthropic:claude-sonnet-4-6
     fallback: openai:gpt-5.4-mini  # 再試行可能な失敗時に一度だけ使う
   course.content.slide:
-    model: minimax:MiniMax-M3
+    model: omniroute:auto/best-coding
     thinking: { enabled: false }
-    fallback: minimax:MiniMax-M2.7
+    fallback: omniroute:auto/best-chat
   classroom: local:qwen3:8b        # モデル ID にコロンを含めてよい
   agent:
     model: openai:gpt-5.5          # ツール呼び出しが必要
     api: openai-completions
-  tts: minimax:speech-2.8-turbo
+  tts: omniroute:gtts/default
   image: openai-image:gpt-image-2
   webSearch: tavily                # プロバイダーのみ：その既定モデル
   video: null                      # 既定では無効。ユーザーが有効にできる

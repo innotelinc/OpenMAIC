@@ -53,9 +53,9 @@ providers:
   openai-image:                    # the same key, used for images
     preset: openai-image
     apiKey: ${OPENAI_API_KEY}
-  minimax:                         # a token plan: chat, image, video, TTS, search
-    preset: minimax
-    apiKey: ${MINIMAX_API_KEY}
+  omniroute:
+    preset: omniroute
+    apiKey: ${OMNIROUTE_API_KEY}
   tavily:
     preset: tavily
     apiKey: ${TAVILY_API_KEY}
@@ -70,14 +70,14 @@ slots:
     model: anthropic:claude-sonnet-4-6
     fallback: openai:gpt-5.4-mini  # tried once on a retryable failure
   course.content.slide:
-    model: minimax:MiniMax-M3
+    model: omniroute:auto/best-coding
     thinking: { enabled: false }
-    fallback: minimax:MiniMax-M2.7
+    fallback: omniroute:auto/best-chat
   classroom: local:qwen3:8b        # the model id may contain colons
   agent:
     model: openai:gpt-5.5          # needs tool calling
     api: openai-completions
-  tts: minimax:speech-2.8-turbo
+  tts: omniroute:gtts/default
   image: openai-image:gpt-image-2
   webSearch: tavily                # provider only: its default model
   video: null                      # off by default; users may turn it on
@@ -102,7 +102,7 @@ Each entry under `providers` declares one provider. The key is its id, which slo
 | `credentials` | Some presets | Key pairs for services that do not use one key. AliDocMind takes `accessKeyId` and `accessKeySecret`. |
 | `options` | No | Non-secret, provider-specific settings, such as `backend` for `voxcpm-tts`. Names are letters, digits, `_` and `-`; values are strings, numbers or booleans (no nested maps or lists), and `${VAR}` works. The model settings show options, so never put a key in them. Deployment only: the model settings cannot set them. |
 
-Most presets cover one capability, following the built-in registries: the `openai` preset is chat only, and OpenAI images and speech are the `openai-image`, `openai-tts` and `openai-whisper` presets. Declare one provider per capability, and reference the same `${VAR}` when one key covers several. **Token plan presets** (`minimax`, `tokendance`, `volcengine-ark`, `kimi-coding-plan`) cover several capabilities with one key, each at the plan's own endpoint. A `baseUrl` on a provider replaces the endpoint for every capability that provider covers, so give a token plan a `baseUrl` only when all of its capabilities move with it.
+Most presets cover one capability, following the built-in registries: the `openai` preset is chat only, and OpenAI images and speech are the `openai-image`, `openai-tts` and `openai-whisper` presets. Declare one provider per capability, and reference the same `${VAR}` when one key covers several. **Token plan presets** (`omniroute`) cover several capabilities with one key, each at the plan's own endpoint. A `baseUrl` on a provider replaces the endpoint for every capability that provider covers, so give a token plan a `baseUrl` only when all of its capabilities move with it.
 
 Amazon Bedrock (`preset: bedrock`) signs requests with the AWS credential chain of the server (environment, profile or role) and reads the region from `BEDROCK_REGION`, `AWS_REGION` or `AWS_DEFAULT_REGION`; `apiKey` is an optional bearer token.
 

@@ -50,6 +50,10 @@ yarn-error.log*
 # env files
 .env*
 !.env.example
+# The classroom's deployment templates: references into Cerulean Vault, never
+# the values themselves (the resolved files they produce stay ignored above).
+!.env.classroom-secrets.example
+!.env.classroom-sso.example
 
 # server provider config (contains API keys)
 server-providers.yml
@@ -94,6 +98,11 @@ e2e/__screenshots-619/
 
 # Operator model configuration (see openmaic.yml in RFC #1701); it names secrets via ${VAR}
 /openmaic.yml
+# …except this deployment's own: the classroom runs every slot on the estate's
+# OmniRoute gateway, with the self-hosted SearXNG and MinerU, and names each
+# secret as ${VAR} (resolved from Cerulean Vault at deploy time). Tracked so the
+# classroom's model configuration is reviewable and survives a rebuild.
+!/openmaic.yml
 
 # Temporary render-service sources extracted by the mixed-pool regression test
 render-service/.owner-bound-parent-*/

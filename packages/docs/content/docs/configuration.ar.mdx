@@ -53,9 +53,9 @@ providers:
   openai-image:                    # المفتاح نفسه لتوليد الصور
     preset: openai-image
     apiKey: ${OPENAI_API_KEY}
-  minimax:                         # Token Plan: محادثة وصور وفيديو وTTS وبحث
-    preset: minimax
-    apiKey: ${MINIMAX_API_KEY}
+  omniroute:
+    preset: omniroute
+    apiKey: ${OMNIROUTE_API_KEY}
   tavily:
     preset: tavily
     apiKey: ${TAVILY_API_KEY}
@@ -70,14 +70,14 @@ slots:
     model: anthropic:claude-sonnet-4-6
     fallback: openai:gpt-5.4-mini  # يُجرَّب مرة واحدة عند فشل قابل لإعادة المحاولة
   course.content.slide:
-    model: minimax:MiniMax-M3
+    model: omniroute:auto/best-coding
     thinking: { enabled: false }
-    fallback: minimax:MiniMax-M2.7
+    fallback: omniroute:auto/best-chat
   classroom: local:qwen3:8b        # قد يحتوي معرّف النموذج على نقطتين
   agent:
     model: openai:gpt-5.5          # يحتاج إلى استدعاء الأدوات
     api: openai-completions
-  tts: minimax:speech-2.8-turbo
+  tts: omniroute:gtts/default
   image: openai-image:gpt-image-2
   webSearch: tavily                # المزود وحده: نموذجه الافتراضي
   video: null                      # موقوف افتراضيًا؛ يمكن للمستخدمين تشغيله
@@ -102,7 +102,7 @@ allowUserKeys: false               # يختار المستخدمون من بين
 | `credentials` | لبعض الإعدادات المسبقة | أزواج مفاتيح للخدمات التي لا تستخدم مفتاحًا واحدًا. يستخدم AliDocMind الحقلين `accessKeyId` و`accessKeySecret`. |
 | `options` | لا | إعدادات غير سرية خاصة بالمزود، مثل `backend` لـ `voxcpm-tts`. الأسماء أحرف وأرقام و`_` و`-`؛ والقيم سلاسل نصية أو أرقام أو قيم منطقية (بلا خرائط أو قوائم متداخلة)، ويعمل `${VAR}`. تعرض إعدادات النماذج الخيارات، لذا لا تضع فيها مفتاحًا أبدًا. للنشر فقط: لا تستطيع إعدادات النماذج ضبطها. |
 
-تغطي معظم الإعدادات المسبقة قدرة واحدة وفق السجلات المدمجة: الإعداد `openai` للمحادثة فقط، أما صور OpenAI وتحويل النص إلى كلام والتفريغ الصوتي فهي الإعدادات `openai-image` و`openai-tts` و`openai-whisper`. أعلن مزودًا واحدًا لكل قدرة، وأشر إلى `${VAR}` نفسه عندما يغطي مفتاح واحد عدة قدرات. **إعدادات Token Plan المسبقة** (`minimax` و`tokendance` و`volcengine-ark` و`kimi-coding-plan`) تغطي عدة قدرات بمفتاح واحد، كل منها على عنوان الخطة الخاص. يستبدل `baseUrl` على المزود العنوان لكل القدرات التي يغطيها، لذا لا تضع `baseUrl` لـ Token Plan إلا إذا انتقلت كل قدراته معه.
+تغطي معظم الإعدادات المسبقة قدرة واحدة وفق السجلات المدمجة: الإعداد `openai` للمحادثة فقط، أما صور OpenAI وتحويل النص إلى كلام والتفريغ الصوتي فهي الإعدادات `openai-image` و`openai-tts` و`openai-whisper`. أعلن مزودًا واحدًا لكل قدرة، وأشر إلى `${VAR}` نفسه عندما يغطي مفتاح واحد عدة قدرات. **إعدادات Token Plan المسبقة** (`omniroute`) تغطي عدة قدرات بمفتاح واحد، كل منها على عنوان الخطة الخاص. يستبدل `baseUrl` على المزود العنوان لكل القدرات التي يغطيها، لذا لا تضع `baseUrl` لـ Token Plan إلا إذا انتقلت كل قدراته معه.
 
 يوقّع Amazon Bedrock (`preset: bedrock`) الطلبات بسلسلة بيانات اعتماد AWS على الخادم (البيئة أو profile أو role)، ويقرأ المنطقة من `BEDROCK_REGION` أو `AWS_REGION` أو `AWS_DEFAULT_REGION`؛ و`apiKey` رمز bearer اختياري.
 

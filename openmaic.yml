@@ -1,0 +1,62 @@
+# =============================================================================
+# openmaic.yml: this classroom's model configuration
+#
+# One provider: the estate's OmniRoute gateway. Chat, images, video and speech
+# all go through it with a single key, so a model the campus wants is a provider
+# added on the gateway, never a vendor key added here. Search and parsing stay
+# on the machines the classroom already runs on its own compose network — the
+# self-hosted SearXNG and MinerU, neither of which needs a key.
+#
+# OMNIROUTE_API_KEY is not written down here: it lives in Cerulean Vault
+# (cerulean/openmaic) and reaches the container environment through
+# .env.classroom-secrets, which scripts/vault-env.mjs writes from the vault.
+# SEARXNG_BASE_URL and PDF_MINERU_BASE_URL name the compose services and are set
+# in .env.local.
+#
+# The file is read once at startup and is mounted read-only by
+# docker-compose.yml, so changing it is an edit plus a restart, not a rebuild.
+# =============================================================================
+
+providers:
+  # The gateway. Everything below that is not a self-hosted service runs here.
+  omniroute:
+    preset: omniroute
+    apiKey: ${OMNIROUTE_API_KEY}
+    # What the model settings offer from the gateway. Every route below is
+    # served by the gateway's router, not by a vendor chosen here.
+    models:
+      - auto/best-chat
+      - auto/best-coding
+      - auto/best-reasoning
+      - auto/best-fast
+      - auto/best-free
+
+  # Research: the classroom's own SearXNG, keyless, on the classroom network.
+  searxng:
+    preset: searxng
+    baseUrl: ${SEARXNG_BASE_URL}
+
+  # Document parsing: the classroom's own MinerU, also on that network.
+  mineru:
+    preset: mineru
+    baseUrl: ${PDF_MINERU_BASE_URL}
+
+slots:
+  # Chat: the gateway's general route, with the two writers that produce the
+  # lesson's slide copy and interactive widgets on its coding-tuned one.
+  llm: omniroute:auto/best-chat
+  course.content.slide: omniroute:auto/best-coding
+  course.content.interactive: omniroute:auto/best-coding
+  # The workbench agent needs dependable tool calling.
+  agent: omniroute:auto/best-chat
+
+  # Media, on the same key and the same gateway.
+  image: omniroute:codex/gpt-5.6-luna-image
+  video: omniroute:veoaifree-web/seedance
+  # Speech is the gateway's own keyless gTTS route: with no vendor speech
+  # credentials configured there, this is the speech backend that answers.
+  tts: omniroute:gtts/default
+
+  # A provider id alone: neither service has models to choose from.
+  webSearch: searxng
+  document: mineru

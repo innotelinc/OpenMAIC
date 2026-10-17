@@ -148,11 +148,18 @@ export const TOKEN_PLAN_PRESETS: TokenPlanPreset[] = [
         baseUrl: 'http://192.168.1.71:20128/v1',
         defaultModels: ['veoaifree-web/seedance', 'veoaifree-web/veo'],
       },
-      // Speech is deliberately not listed: the gateway knows the speech
-      // routes (openai/minimax/elevenlabs) but holds credentials for none of
-      // them, so `openai/tts-1` answers 400 "No credentials for provider:
-      // openai". A slot that cannot synthesize is worse than an unset one —
-      // narration falls back to the browser's own voices instead of failing.
+      tts: {
+        // Speech goes through the gateway's own keyless gTTS route, which is
+        // the one speech backend a gateway with no vendor speech credentials
+        // still serves (`openai/tts-1` answers 400 "No credentials for
+        // provider: openai"). Naming it keeps narration on the gateway instead
+        // of leaving the slot unset, and the same route serves the vendor
+        // speech models once an operator adds speech credentials there.
+        providerId: 'openai-tts',
+        baseUrl: 'http://192.168.1.71:20128/v1',
+        defaultModelId: 'gtts/default',
+        defaultModels: ['gtts/default'],
+      },
     },
   },
 ];

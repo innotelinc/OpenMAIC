@@ -6,8 +6,13 @@
 use_default_settings: true
 
 server:
-  # Container-local: only the classroom reaches it, over the compose network.
-  secret_key: "01de45616320c0d361f7136ec531e19e33dcdf0bac76e59ed5bade0c70ed8272"
+  # secret_key is deliberately absent: it is a credential, so it lives in
+  # Cerulean Vault (cerulean/openmaic#SEARXNG_SECRET) and reaches the container
+  # as SEARXNG_SECRET, which SearXNG prefers over this file. A committed
+  # literal would be a shared secret in git, and SearXNG refuses to start
+  # without one — so a missing vault resolution fails loudly instead of
+  # silently running on a value everyone can read.
+  #
   # The limiter blocks the JSON API from non-browser clients, which is exactly
   # how lib/web-search/searxng.ts calls it.
   limiter: false
