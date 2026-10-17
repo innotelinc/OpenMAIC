@@ -1,3 +1,4 @@
+import { ModelAuthorizationError } from './model-config/model-authorization';
 import { NextResponse } from 'next/server';
 
 export const API_ERROR_CODES = {
@@ -5,8 +6,10 @@ export const API_ERROR_CODES = {
   MISSING_API_KEY: 'MISSING_API_KEY',
   MISSING_PROVIDER: 'MISSING_PROVIDER',
   MISSING_MODEL: 'MISSING_MODEL',
+  MODEL_CONFIG_INVALID: 'MODEL_CONFIG_INVALID',
   INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
   INVALID_REQUEST: 'INVALID_REQUEST',
+  CREATE_REFUSED: 'CREATE_REFUSED',
   UNAUTHENTICATED: 'UNAUTHENTICATED',
   ASSET_NOT_FOUND: 'ASSET_NOT_FOUND',
   PROVIDER_DISABLED: 'PROVIDER_DISABLED',
@@ -38,6 +41,8 @@ export const API_ERROR_CODES = {
   TRANSCRIPTION_FAILED: 'TRANSCRIPTION_FAILED',
   PARSE_FAILED: 'PARSE_FAILED',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
+  ACTIVE_RUN_LIMIT: 'ACTIVE_RUN_LIMIT',
+  RUN_STATE_CONFLICT: 'RUN_STATE_CONFLICT',
 } as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[keyof typeof API_ERROR_CODES];
@@ -47,6 +52,7 @@ export interface ApiErrorBody {
   errorCode: ApiErrorCode;
   error: string;
   details?: string;
+  reason?: string;
 }
 
 export function apiError(
@@ -54,6 +60,7 @@ export function apiError(
   status: number,
   error: string,
   details?: string,
+  reason?: string,
 ): NextResponse<ApiErrorBody> {
   return NextResponse.json(
     {
@@ -61,6 +68,7 @@ export function apiError(
       errorCode: code,
       error,
       ...(details ? { details } : {}),
+      ...(reason ? { reason } : {}),
     },
     { status },
   );
@@ -68,4 +76,12 @@ export function apiError(
 
 export function apiSuccess<T extends Record<string, unknown>>(data: T, status = 200): NextResponse {
   return NextResponse.json({ success: true, ...data }, { status });
+}
+
+/** A stable response for a model refused before provider access. */
+export function modelAuthorizationResponse(error: unknown): NextResponse<ApiErrorBody> | undefined {
+  if (error instanceof ModelAuthorizationError) {
+    return apiError(error.code, error.httpStatus, error.message);
+  }
+  return undefined;
 }

@@ -5,9 +5,7 @@ import {
   INTERACTIVE_SOURCE_NODE_LIMIT,
 } from '@/lib/chat/pi/element-reference';
 
-const PI_CHAT_FLAG = 'NEXT_PUBLIC_PI_CHAT_ENABLED';
 const COURSEWARE_REFERENCE_FLAG = 'NEXT_PUBLIC_COURSEWARE_REFERENCE_ENABLED';
-let originalPiChatFlag: string | undefined;
 let originalCoursewareReferenceFlag: string | undefined;
 
 const mocks = vi.hoisted(() => ({
@@ -40,10 +38,12 @@ vi.mock('@/lib/logger', () => ({
   }),
 }));
 
-function makeRequest(body: Record<string, unknown>): NextRequest {
+function makeRequest(body: Record<string, unknown>, modelRoutes?: string): NextRequest {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (modelRoutes) headers['x-model-routes'] = modelRoutes;
   return new Request('http://localhost/api/chat/pi', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(body),
   }) as unknown as NextRequest;
 }
@@ -94,9 +94,7 @@ function makeBody() {
 
 describe('POST /api/chat/pi model and thinking resolution', () => {
   beforeEach(() => {
-    originalPiChatFlag = process.env[PI_CHAT_FLAG];
     originalCoursewareReferenceFlag = process.env[COURSEWARE_REFERENCE_FLAG];
-    process.env[PI_CHAT_FLAG] = 'true';
     process.env[COURSEWARE_REFERENCE_FLAG] = 'true';
     vi.resetModules();
     mocks.resolveModel.mockReset();
@@ -112,11 +110,6 @@ describe('POST /api/chat/pi model and thinking resolution', () => {
   });
 
   afterEach(() => {
-    if (originalPiChatFlag === undefined) {
-      delete process.env[PI_CHAT_FLAG];
-    } else {
-      process.env[PI_CHAT_FLAG] = originalPiChatFlag;
-    }
     if (originalCoursewareReferenceFlag === undefined) {
       delete process.env[COURSEWARE_REFERENCE_FLAG];
     } else {
@@ -124,19 +117,14 @@ describe('POST /api/chat/pi model and thinking resolution', () => {
     }
   });
 
-  it('returns 404 without invoking the runtime when the feature flag is disabled', async () => {
-    delete process.env[PI_CHAT_FLAG];
+  it('resolves the model and runs the Pi loop for a valid request', async () => {
     const { POST } = await import('@/app/api/chat/pi/route');
     const response = await POST(makeRequest(makeBody()));
 
-    expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toMatchObject({
-      success: false,
-      errorCode: 'INVALID_REQUEST',
-      error: 'Pi chat runtime is disabled',
-    });
-    expect(mocks.resolveModel).not.toHaveBeenCalled();
-    expect(mocks.runPiDirectorLoop).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(mocks.resolveModel).toHaveBeenCalledOnce();
+    expect(mocks.runPiDirectorLoop).toHaveBeenCalledOnce();
   });
 
   it('returns 400 for a malformed agentIds value before resolving a model', async () => {
@@ -189,6 +177,25 @@ describe('POST /api/chat/pi model and thinking resolution', () => {
         languageModel: { id: 'language-model' },
         thinkingConfig: { enabled: false },
         maxOutputTokens: 4096,
+      }),
+    );
+  });
+
+  it('forwards parsed x-model-routes user routes into chat-adapter resolution', async () => {
+    const { POST } = await import('@/app/api/chat/pi/route');
+    const response = await POST(
+      makeRequest(
+        makeBody(),
+        JSON.stringify({ 'chat-adapter': { model: 'anthropic:claude-sonnet-4' } }),
+      ),
+    );
+    await response.text();
+
+    expect(response.status).toBe(200);
+    expect(mocks.resolveModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stage: 'chat-adapter',
+        userRoutes: { 'chat-adapter': { model: 'anthropic:claude-sonnet-4' } },
       }),
     );
   });

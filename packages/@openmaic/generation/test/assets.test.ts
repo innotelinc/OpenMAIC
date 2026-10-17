@@ -33,9 +33,11 @@ const SNIPPET_IDS = [
   'image-instructions',
   'video-instructions',
   'media-safety-guidelines',
+  'interactive-observation',
   'slide-image-instructions',
   'slide-generated-image-instructions',
   'slide-video-instructions',
+  'speech-tts-readability',
 ] as const satisfies readonly SnippetId[];
 
 const GRANDFATHERED_NON_CAMEL_CASE_PLACEHOLDERS = [
@@ -71,7 +73,7 @@ describe('packaged prompt assets', () => {
       ...listFiles(join(PACKAGE_ROOT, 'templates')),
       ...listFiles(join(PACKAGE_ROOT, 'snippets')),
     ]
-      .map((file) => relative(PACKAGE_ROOT, file))
+      .map((file) => relative(PACKAGE_ROOT, file).replace(/\\/g, '/'))
       .sort();
 
     expect(actualFiles).toEqual(expectedFiles);

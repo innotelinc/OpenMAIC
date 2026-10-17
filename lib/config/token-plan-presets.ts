@@ -2,8 +2,8 @@
  * Token Plan presets — multi-modal.
  *
  * A token plan (e.g. MiniMax) is often a single key that spans LLM + image +
- * video + TTS + web-search. A preset declares, per modality, the target provider
- * id + base URL in that modality's registry. "One-click apply" fills the key into
+ * video + TTS + web search + web fetch. A preset declares, per modality, the
+ * target provider id + base URL in that modality's registry. "One-click apply" fills the key into
  * every declared modality and lights it up; modalities not declared here are
  * simply "not adapted yet" (at our best — add an entry later to extend).
  *
@@ -17,7 +17,7 @@ import type { ProviderType } from '@/lib/types/provider';
 export type PresetCategory = 'official' | 'aggregator' | 'token_plan' | 'third_party';
 
 /** The modalities a token plan can be applied to. ASR is omitted = not adapted. */
-export type TokenPlanModality = 'llm' | 'image' | 'video' | 'tts' | 'webSearch';
+export type TokenPlanModality = 'llm' | 'image' | 'video' | 'tts' | 'webSearch' | 'webFetch';
 
 /** Where a token plan maps in one modality's provider registry. */
 export interface TokenPlanModalityTarget {
@@ -38,8 +38,18 @@ export interface TokenPlanModalityTarget {
    * them; we never silently drop a model the user paid for.
    */
   defaultModels?: string[];
-  /** TTS only: default model id to enable. */
+  /**
+   * LLM/TTS: the plan's recommended default model — for LLM the mainline model
+   * (defaults to `defaultModels[0]`), for TTS the model the plan enables.
+   */
   defaultModelId?: string;
+  /**
+   * LLM only: per-stage recommended models, applied as user-level stage routes
+   * (e.g. 'scene-content:slide' → the plan's courseware model). Stage keys live
+   * in the LLM_STAGES whitelist; ids must also appear in `defaultModels` so the
+   * route's model is selectable.
+   */
+  stageRoutes?: Record<string, string>;
 }
 
 export interface TokenPlanPreset {
@@ -49,6 +59,12 @@ export interface TokenPlanPreset {
   name: string;
   /** Optional vendor/docs link. */
   websiteUrl?: string;
+  /**
+   * Optional plan subscription links (domestic / international). Rendered as a
+   * links row in the plan panel; `websiteUrl` stays the generic manage-account
+   * link.
+   */
+  subscribeUrls?: { domestic: string; international: string };
   /** Example key prefix shown in the settings input placeholder. */
   apiKeyPlaceholder?: string;
   /** Icon path under /public (optional). */
@@ -59,7 +75,14 @@ export interface TokenPlanPreset {
 }
 
 /** Human-facing order of modalities in the apply result. */
-export const MODALITY_ORDER: TokenPlanModality[] = ['llm', 'image', 'video', 'tts', 'webSearch'];
+export const MODALITY_ORDER: TokenPlanModality[] = [
+  'llm',
+  'image',
+  'video',
+  'tts',
+  'webSearch',
+  'webFetch',
+];
 
 /**
  * Built-in token plans.
@@ -71,9 +94,9 @@ export const MODALITY_ORDER: TokenPlanModality[] = ['llm', 'image', 'video', 'tt
  * muddied the "one key, every modality" promise.
  *
  * - TokenDance: LLM/image/video/TTS/web-search through one gateway key.
- * - MiniMax: full-set template — every modality has a working adapter
- *   (LLM/image/video/TTS/web-search).
+ * - MiniMax: LLM/image/video/TTS/web-search adapters.
  * - Volcengine Ark Agent Plan: LLM/image/video/TTS/web-search via the plan key.
+ * - Kimi Coding Plan: LLM/web-search/web-fetch via the plan key.
  */
 export const TOKEN_PLAN_PRESETS: TokenPlanPreset[] = [
   // ── Gateway token plan (one key, vendor wire formats) ─────────────────────
@@ -97,7 +120,13 @@ export const TOKEN_PLAN_PRESETS: TokenPlanPreset[] = [
         providerId: 'tokendance',
         baseUrl: 'https://tokendance.space/gateway/v1',
         apiFormat: 'openai',
+        // The plan's own model family is its primary course-generation set: base
+        // drives the mainline while slide/interactive cover courseware and
+        // interactive pages; the Pro agent runs on DeepSeek V4.1 Flash.
         defaultModels: [
+          'cogevol-base',
+          'cogevol-slide-0828',
+          'cogevol-interactive-0828',
           'deepseek-v4.1-flash',
           'deepseek-v4-pro',
           'glm-5.3',
@@ -106,6 +135,13 @@ export const TOKEN_PLAN_PRESETS: TokenPlanPreset[] = [
           'seed-2.1-pro',
           'minimax-m3',
         ],
+        defaultModelId: 'cogevol-base',
+        stageRoutes: {
+          'scene-content:slide': 'cogevol-slide-0828',
+          'scene-content:interactive': 'cogevol-interactive-0828',
+          // The Pro agent needs dependable tool calling: a general model.
+          'maic-agent-driver': 'deepseek-v4.1-flash',
+        },
       },
       image: {
         providerId: 'seedream',
@@ -167,7 +203,7 @@ export const TOKEN_PLAN_PRESETS: TokenPlanPreset[] = [
       tts: {
         providerId: 'minimax-tts',
         baseUrl: 'https://api.minimaxi.com',
-        defaultModelId: 'speech-2.8-hd',
+        defaultModelId: 'speech-2.8-turbo',
         defaultModels: [
           'speech-2.8-hd',
           'speech-2.8-turbo',
@@ -203,6 +239,7 @@ export const TOKEN_PLAN_PRESETS: TokenPlanPreset[] = [
         baseUrl: 'https://ark.cn-beijing.volces.com/api/plan/v3',
         apiFormat: 'openai',
         defaultModels: [
+          'doubao-seed-2.1-turbo',
           'ark-code-latest',
           'doubao-seed-2.0-pro',
           'doubao-seed-2.0-code',
@@ -218,6 +255,7 @@ export const TOKEN_PLAN_PRESETS: TokenPlanPreset[] = [
           'kimi-k2.7-code',
           'kimi-k2.6',
         ],
+        defaultModelId: 'doubao-seed-2.1-turbo',
       },
       // Image: Agent Plan documentation and user-facing guides consistently
       // expose Seedream 5.0 Lite via the dotted plan alias, not the pay-as-you-go
@@ -235,7 +273,11 @@ export const TOKEN_PLAN_PRESETS: TokenPlanPreset[] = [
       video: {
         providerId: 'seedance',
         baseUrl: 'https://ark.cn-beijing.volces.com/api/plan/v3',
-        defaultModels: ['doubao-seedance-2.0', 'doubao-seedance-1.5-pro'],
+        defaultModels: [
+          'doubao-seedance-2.0-mini',
+          'doubao-seedance-2.0',
+          'doubao-seedance-1.5-pro',
+        ],
       },
       // Web search: 豆包搜索 (Custom 版). Unlike the LLM/image/video modalities,
       // this lives on its OWN host (open.feedcoopapi.com, not the ark plan
@@ -253,7 +295,49 @@ export const TOKEN_PLAN_PRESETS: TokenPlanPreset[] = [
       tts: {
         providerId: 'doubao-tts',
         baseUrl: 'https://openspeech.bytedance.com/api/v3/plan/tts',
+        defaultModelId: 'seed-tts-2.0',
+        defaultModels: ['seed-tts-2.0'],
       },
+    },
+  },
+  // ── Kimi Coding Plan (last = lowest priority) ───────────────────────────
+  // The Coding Plan key authenticates against the plan's DEDICATED
+  // endpoint (https://www.kimi.com/code/docs/) — api.kimi.com/coding/v1,
+  // international api.kimi.ai/coding/v1 — NOT Moonshot's Open Platform
+  // (api.moonshot.cn/v1): sending plan keys there fails with
+  // "Not found the model kimi-for-coding or Permission denied" (review P0 on
+  // #1664). The plan uses the existing `kimi` registry adapters for chat,
+  // search and fetch, with one Coding Plan key and base URL. Its workspace
+  // provider uses the `kimi-coding-plan` preset, keeping personal Kimi keys
+  // separate. Connecting intentionally takes over the declared slots (see
+  // #1645), subject to administrator locks and the user's conflict choice;
+  // disconnecting removes the plan's assignments and restores server defaults
+  // (the implicit builtin reader for fetch when no reader was configured).
+  // The mainline defaults to `kimi-for-coding`; every follow-mainline LLM
+  // station inherits it. Image/video/TTS are not declared and stay untouched.
+  // Priority note: placed LAST in TOKEN_PLAN_PRESETS, so Kimi yields only
+  // slots that a higher-priority connected plan also recommends.
+  {
+    id: 'kimi',
+    name: 'Kimi',
+    websiteUrl: 'https://www.kimi.com/code?aff=openmaic',
+    subscribeUrls: {
+      domestic: 'https://www.kimi.com/code?aff=openmaic',
+      international: 'https://www.kimi.ai/code?aff=openmaic',
+    },
+    apiKeyPlaceholder: 'sk-...',
+    icon: '/logos/kimi.png',
+    category: 'token_plan',
+    modalities: {
+      llm: {
+        providerId: 'kimi',
+        baseUrl: 'https://api.kimi.com/coding/v1',
+        apiFormat: 'openai',
+        defaultModels: ['k3', 'k3-256k', 'kimi-for-coding', 'kimi-for-coding-highspeed'],
+        defaultModelId: 'kimi-for-coding',
+      },
+      webSearch: { providerId: 'kimi', baseUrl: 'https://api.kimi.com/coding/v1' },
+      webFetch: { providerId: 'kimi', baseUrl: 'https://api.kimi.com/coding/v1' },
     },
   },
 ];
@@ -265,3 +349,21 @@ export const PRESET_CATEGORY_ORDER: PresetCategory[] = [
   'third_party',
   'official',
 ];
+
+/**
+ * Fingerprint of everything a preset seeds (model catalogues, default model,
+ * stage routes). Recorded on apply; when the shipped preset data changes, the
+ * fingerprint changes and the app re-seeds enabled plans on next load — so
+ * users who enabled a plan before a preset update still get the new defaults
+ * without re-applying. Credentials are deliberately excluded: only the user's
+ * key ever writes those.
+ */
+export function tokenPlanSeedFingerprint(preset: TokenPlanPreset): string {
+  const m = preset.modalities;
+  return JSON.stringify({
+    llm: [m.llm?.defaultModelId, m.llm?.defaultModels, m.llm?.stageRoutes],
+    image: m.image?.defaultModels,
+    video: m.video?.defaultModels,
+    tts: [m.tts?.defaultModelId, m.tts?.defaultModels],
+  });
+}

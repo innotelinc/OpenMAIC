@@ -15,8 +15,12 @@
  * - `x-material-filename` is the display name (required).
  * - Size caps are per class: media (audio/video) uploads cap at
  *   `maxUploadBytes`, documents/images at `min(maxDocumentBytes,
- *   maxUploadBytes)` — both 413 when exceeded, checked on the declared
- *   `content-length` AND on the streamed body.
+ *   maxUploadBytes)`. Exceeding that effective limit answers 413, both for
+ *   the declared `content-length` and while reading the body. Those two
+ *   responses include a top-level numeric `maxBytes`: the exact byte
+ *   threshold that check enforced, not the rounded figure the client shows.
+ *   A body larger than its declared content-length is a separate 413 and
+ *   does not include `maxBytes`.
  * - Lifecycle: the upload reclaims crashed `uploading` leftovers older than
  *   24 hours (their byte objects first, then the reservations), reserves a
  *   quota-checked `uploading` row (429 when the owner's count or byte quota is
@@ -26,9 +30,18 @@
  *   upload's 24-hour sweep.
  * - Every response echoes the `x-request-id` header so the uploader can pair
  *   a failure with its log line.
+ * - Extraction starts with the upload: the row is finalized `extracting` and
+ *   the background extractor (`lib/server/materials/extraction.ts`) extracts
+ *   it; `GET /api/materials/{id}` reports its state. `?extract=false` defers
+ *   it (`idle`): a run that uses the material starts it then.
  *
- * The configured runtime gates the family (the workbench is agent-runtime
- * territory): off, or on without a DATABASE_URL, answers the same plain 404.
+ * Gates: the upload writes only the owner-scoped material library, so it is
+ * served whenever server persistence is configured (a DATABASE_URL), with the
+ * agent runtime on or off — `POST /api/generate-classroom` consumes these
+ * uploads by id; so is the owner's own list (no `sessionId`). A session's
+ * list stays behind the agent runtime gate: it names an agent session
+ * (`sessionId`) and reads that session's materials, which only exist with
+ * the runtime on. Either gate closed answers the same plain 404.
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
@@ -39,11 +52,14 @@ import { NextResponse } from 'next/server';
 import { createMaterialId } from '@openmaic/storage';
 import type { ConnectableQueryable } from '@openmaic/storage/server/reference';
 
-import { isAgentRuntimeConfigured } from '@/lib/config/feature-flags';
+import {
+  isAgentRuntimeConfigured,
+  isServerPersistenceConfigured,
+} from '@/lib/config/feature-flags';
 import { apiError } from '@/lib/server/api-response';
 import { agentRuntimeConfig } from '@/lib/server/agent-runtime/config';
 import { ownerJson, ownerNotFound } from '@/lib/server/agent-runtime/route-response';
-import { withRequestOwnerId } from '@/lib/server/agent-runtime/with-owner';
+import { withRequestOwner } from '@/lib/server/identity/with-owner';
 import {
   resolveOwnedSession,
   listSessionMaterials,
@@ -52,13 +68,20 @@ import {
 import {
   abandonOwnerMaterial,
   finalizeOwnerMaterial,
+  listOwnerMaterials,
   MaterialQuotaExceededError,
   publicMaterial,
   reclaimStaleOwnerMaterialUploads,
   registerOwnerMaterial,
 } from '@/lib/persistence/owner-materials';
+import { ownerWriteErrorResponse } from '@/lib/persistence/owner-merges';
 import { getServerPersistenceProvider } from '@/lib/persistence/server-provider';
-import { getMaterialByteStore } from '@/lib/server/materials/bytes';
+import { deleteMaterialObjects, getMaterialByteStore } from '@/lib/server/materials/bytes';
+import { wakeOwnerMaterialExtractor } from '@/lib/server/materials/extractor-wake';
+import {
+  MATERIAL_DOCUMENT_UPLOAD_LIMIT,
+  MATERIAL_MEDIA_UPLOAD_LIMIT,
+} from '@/lib/server/materials/upload-limits';
 import {
   isWorkbenchMaterialMime,
   MEDIA_MIME_TYPES,
@@ -67,10 +90,6 @@ import {
 
 export const runtime = 'nodejs';
 
-const DOCUMENT_UPLOAD_LIMIT = Math.min(
-  agentRuntimeConfig.maxDocumentBytes,
-  agentRuntimeConfig.maxUploadBytes,
-);
 const MEDIA_MIME_SET = new Set<string>(MEDIA_MIME_TYPES);
 
 /** The store's keyset-paging ceiling (default 50, capped at 200). */
@@ -87,6 +106,18 @@ export function ownerMaterialObjectKey(ownerId: string, materialId: string): str
 }
 
 class MaterialPayloadTooLarge extends Error {}
+
+function materialTooLarge(maxBytes: number) {
+  return NextResponse.json(
+    {
+      success: false,
+      errorCode: 'INVALID_REQUEST',
+      error: `upload exceeds ${maxBytes} bytes`,
+      maxBytes,
+    },
+    { status: 413 },
+  );
+}
 
 /** The `x-material-filename` header, sanitized to a bare file name. */
 function materialFilename(req: NextRequest): string | null {
@@ -115,14 +146,28 @@ function parseLimit(raw: string | null): { limit?: number } | { invalid: true } 
   return { limit: parsed };
 }
 
+// GET /api/materials — the caller's own library uploads, newest first, each
+// with its extraction (served with server persistence).
 // GET /api/materials?sessionId=&limit=&before= — list one owned session's
 // materials, newest first, keyset-paged (the agent-tools list surface).
 export async function GET(req: NextRequest) {
+  const searchParams = new URL(req.url).searchParams;
+  // A session named but empty is a mistake, not a request for the library.
+  if (searchParams.has('sessionId') && !searchParams.get('sessionId')?.trim()) {
+    return apiError('MISSING_REQUIRED_FIELD', 400, 'sessionId must not be empty');
+  }
+  if (!searchParams.has('sessionId')) {
+    if (!isServerPersistenceConfigured()) return new Response('Not found', { status: 404 });
+    return withRequestOwner(req, async ({ ownerId }, responseHeaders) => {
+      const provider = await getServerPersistenceProvider(process.env.DATABASE_URL ?? '');
+      const records = await listOwnerMaterials(provider.pool, ownerId);
+      return ownerJson({ materials: records.map(publicMaterial) }, 200, responseHeaders);
+    });
+  }
   if (!isAgentRuntimeConfigured()) return new Response('Not found', { status: 404 });
 
   const url = new URL(req.url);
-  const sessionId = url.searchParams.get('sessionId')?.trim();
-  if (!sessionId) return apiError('MISSING_REQUIRED_FIELD', 400, 'sessionId is required');
+  const sessionId = url.searchParams.get('sessionId')!.trim();
 
   const parsedLimit = parseLimit(url.searchParams.get('limit'));
   if ('invalid' in parsedLimit) {
@@ -134,7 +179,7 @@ export async function GET(req: NextRequest) {
   }
   const before = url.searchParams.get('before')?.trim() || undefined;
 
-  return withRequestOwnerId(req, async (ownerId, responseHeaders) => {
+  return withRequestOwner(req, async ({ ownerId }, responseHeaders) => {
     const session = await resolveOwnedSession(sessionId, ownerId);
     if (!session) return ownerNotFound(responseHeaders);
     const materials = await listSessionMaterials(sessionId, {
@@ -180,11 +225,14 @@ export async function POST(req: NextRequest) {
     return response;
   };
 
-  if (!isAgentRuntimeConfigured()) return new Response('Not found', { status: 404 });
+  if (!isServerPersistenceConfigured()) return new Response('Not found', { status: 404 });
 
-  return withRequestOwnerId(req, async (ownerId, responseHeaders) => {
+  return withRequestOwner(req, async ({ ownerId }, responseHeaders) => {
     try {
       phase = 'validate_request';
+      // Extraction starts with the upload unless the uploader defers it (the
+      // agent workspace, which extracts what a session binds itself).
+      const extract = new URL(req.url).searchParams.get('extract') !== 'false';
       const rawMime = (req.headers.get('content-type') ?? '').split(';', 1)[0];
       declaredMime = rawMime;
       const originalName = materialFilename(req);
@@ -205,16 +253,12 @@ export async function POST(req: NextRequest) {
         );
       }
       const uploadLimit = MEDIA_MIME_SET.has(mime)
-        ? agentRuntimeConfig.maxUploadBytes
-        : DOCUMENT_UPLOAD_LIMIT;
+        ? MATERIAL_MEDIA_UPLOAD_LIMIT
+        : MATERIAL_DOCUMENT_UPLOAD_LIMIT;
 
       declaredBytes = Number(req.headers.get('content-length') ?? 0);
       if (Number.isFinite(declaredBytes) && declaredBytes > uploadLimit) {
-        return reject(
-          apiError('INVALID_REQUEST', 413, `upload exceeds ${uploadLimit} bytes`),
-          'declared_body_too_large',
-          responseHeaders,
-        );
+        return reject(materialTooLarge(uploadLimit), 'declared_body_too_large', responseHeaders);
       }
       if (!req.body) {
         return reject(
@@ -255,7 +299,7 @@ export async function POST(req: NextRequest) {
         ownerId,
         async (objectKey) => {
           try {
-            await byteStore.delete(objectKey);
+            await deleteMaterialObjects(byteStore, objectKey);
           } catch (error) {
             console.warn(
               'material stale byte deletion failed; keeping its reservation for the next pass',
@@ -300,6 +344,8 @@ export async function POST(req: NextRequest) {
             responseHeaders,
           );
         }
+        const claimed = ownerWriteErrorResponse(error);
+        if (claimed) return reject(claimed, 'owner_claim', responseHeaders);
         throw error;
       }
 
@@ -316,11 +362,7 @@ export async function POST(req: NextRequest) {
             provider.pool as unknown as ConnectableQueryable,
             createdMaterialId,
           ).catch(() => undefined);
-          return reject(
-            apiError('INVALID_REQUEST', 413, `upload exceeds ${uploadLimit} bytes`),
-            'streamed_body_too_large',
-            responseHeaders,
-          );
+          return reject(materialTooLarge(uploadLimit), 'streamed_body_too_large', responseHeaders);
         }
         failureLogged = true;
         await abandonOwnerMaterial(
@@ -365,7 +407,9 @@ export async function POST(req: NextRequest) {
           createdMaterialId,
           bytes.byteLength,
           hash,
+          { extract },
         );
+        if (extract) wakeOwnerMaterialExtractor();
         const view = publicMaterial(row);
         const res = NextResponse.json(
           {
@@ -373,6 +417,7 @@ export async function POST(req: NextRequest) {
             originalName: view.originalName,
             bytes: view.bytes,
             mime: view.mime,
+            mediaKind: view.mediaKind,
             extraction: view.extraction,
           },
           { status: 201 },

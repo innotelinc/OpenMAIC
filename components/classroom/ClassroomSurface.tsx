@@ -4,7 +4,7 @@
  * ClassroomSurface — the classroom, wherever it is mounted.
  *
  * This is the body `/classroom/[id]` has always had: the load pipeline, the
- * generation-resume policy and the `Stage` dispatch under `ThemeProvider` /
+ * generation run it follows and the `Stage` dispatch under `ThemeProvider` /
  * `MediaStageProvider`. It moved out of the route file for exactly one reason
  * — the Pro workspace's third pane hosts the REAL classroom, not a preview and
  * not an iframe, so both surfaces must run the same code rather than two
@@ -22,8 +22,8 @@
  * three depend on server-side machinery this workspace does not have, so they
  * are dropped and the load follows the ordinary path
  * (`app/classroom/[id]/page.tsx`). The stage-meta sidecar is still consulted:
- * both variants gate generation on ownership, and the standalone page also
- * applies its viewer-specific edit access.
+ * both variants gate the run's Retry on ownership, and the standalone page
+ * also applies its viewer-specific edit access.
  */
 
 import { Stage } from '@/components/stage';
@@ -31,44 +31,24 @@ import { ThemeProvider } from '@/lib/hooks/use-theme';
 import { useStageStore } from '@/lib/store';
 import { useSettingsStore } from '@/lib/store/settings';
 import { claimStageSceneLoadToken, isCurrentStageSceneLoadToken } from '@/lib/store/stage';
-import { loadImageMapping } from '@/lib/utils/image-storage';
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useSceneGenerator } from '@/lib/hooks/use-scene-generator';
-import { useMediaGenerationStore } from '@/lib/store/media-generation';
-import { clearNarrationAllocations } from '@/lib/audio/narration-allocations';
 import { useNarrationAdoption } from '@/lib/audio/use-narration-adoption';
-import { clearPendingMediaAllocations } from '@/lib/media/pending-media-allocations';
-import { useWhiteboardHistoryStore } from '@/lib/store/whiteboard-history';
-import { useCanvasStore } from '@/lib/store/canvas';
 import { createLogger } from '@/lib/logger';
 import { MediaStageProvider } from '@/lib/contexts/media-stage-context';
-import { generateMediaForOutlines } from '@/lib/media/media-orchestrator';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { FileQuestion, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useAgentRegistry } from '@/lib/orchestration/registry/store';
-import {
-  applyClassroomStageAndScenes,
-  defaultClassroomLoadDeps,
-  runClassroomLoad,
-} from '@/lib/classroom/load-classroom';
+import { defaultClassroomLoadDeps, runClassroomLoad } from '@/lib/classroom/load-classroom';
 import {
   paneAvailabilityRetryDelay,
   resolveClassroomSurfaceView,
-  shouldResumeClassroomGeneration,
 } from '@/lib/classroom/progressive-load-policy';
-import { fetchStageMeta } from '@/lib/classroom/stage-meta-client';
-import {
-  classroomGenerationOwnership,
-  noteStageOwnership,
-  retryWhileOwnershipUnresolved,
-  type ClassroomGenerationOwnership,
-} from '@/lib/classroom/stage-ownership-signal';
-import {
-  noteStageGenerationOwnership,
-  useMayGenerateForStage,
-} from '@/lib/classroom/generation-permission';
-import { isServerBackedMediaPersistence } from '@/lib/persistence/media-persistence';
+import { useClassroomSession } from '@/lib/classroom/use-classroom-session';
+import { applySceneDeepLink } from '@/lib/classroom/scene-deep-link';
+import { useRunCourse } from '@/lib/generation-run-client/use-run-course';
+import { pendingSceneFailureKey } from '@/lib/generation-run-client/failure-message';
+import { CourseGeneratingPlaceholder } from './CourseGeneratingPlaceholder';
 
 const log = createLogger('Classroom');
 
@@ -101,23 +81,10 @@ export function ClassroomSurface({
    * deleted or never existed.
    */
   const [notFound, setNotFound] = useState(false);
-  /**
-   * Whether this browser may start generation for this course, from the shared
-   * permission store the stage-meta sidecar feeds. Gates the resume effect and
-   * the outline-retry affordance alike, so what is offered and what is allowed
-   * cannot diverge.
-   */
-  const mayGenerate = useMayGenerateForStage(classroomId);
-
-  const generationStartedRef = useRef(false);
   const activeClassroomIdRef = useRef<string | null>(null);
   const loadEpochRef = useRef(0);
 
-  const { generateRemaining, retrySingleOutline, stop } = useSceneGenerator({
-    onComplete: () => {
-      log.info('[Classroom] All scenes generated');
-    },
-  });
+  const { mayGenerate, refreshOwnership } = useClassroomSession({ classroomId, variant });
 
   const loadClassroom = useCallback(
     async (isEffectCurrent: () => boolean): Promise<ClassroomLoadOutcome> => {
@@ -129,15 +96,17 @@ export function ClassroomSurface({
           classroomId,
           loadToken,
           isCurrent,
-          loadFromStorage,
+          loadFromStorage: async (id, token) => {
+            await loadFromStorage(id, token);
+            // `?scene=<id>` opens the page at that scene (links from exported
+            // decks). Applied before the rest of the load so the opening
+            // scene's media is the one hydrated first. The pane lives inside
+            // the workspace URL, so only the standalone page reads it.
+            if (variant === 'page' && isCurrent()) {
+              applySceneDeepLink(window.location.search, id, useStageStore);
+            }
+          },
           getCurrentStage: () => useStageStore.getState().stage,
-          fetchClassroom: defaultClassroomLoadDeps.fetchClassroom,
-          applyFallbackScenes: (args) =>
-            defaultClassroomLoadDeps.applyFallbackScenes({
-              ...args,
-              isCurrent,
-              applyStageAndScenes: applyClassroomStageAndScenes,
-            }),
           loadRestoredMediaTasks: defaultClassroomLoadDeps.loadRestoredMediaTasks,
           applyRestoredMediaTasks: (restored) =>
             defaultClassroomLoadDeps.applyRestoredMediaTasks(restored, isCurrent),
@@ -147,6 +116,7 @@ export function ClassroomSurface({
           applyGeneratedAgents: defaultClassroomLoadDeps.applyGeneratedAgents,
           getSettings: () => useSettingsStore.getState(),
           getAgent: (id) => useAgentRegistry.getState().getAgent(id),
+          agentsReady: defaultClassroomLoadDeps.agentsReady,
           restoreAgentSelection: defaultClassroomLoadDeps.restoreAgentSelection,
           setError,
           setLoading,
@@ -164,18 +134,6 @@ export function ClassroomSurface({
           // Inside the workspace the pane treats a miss as the bounded
           // availability gap (stage_link can land before the document).
           return 'absent';
-        }
-
-        if (loadResult.outcome === 'unavailable') {
-          if (variant === 'pane') {
-            // Retry through the availability schedule; exhaustion lands on the
-            // error card with Retry, not the not-found claim.
-            return 'unavailable';
-          }
-          setLoadUnavailable(true);
-          setError(LOAD_UNAVAILABLE_ERROR);
-          setLoading(false);
-          return 'failed';
         }
 
         if (loadResult.outcome === 'cancelled') return 'cancelled';
@@ -202,43 +160,6 @@ export function ClassroomSurface({
       }
     },
     [classroomId, loadFromStorage, variant],
-  );
-
-  const refreshOwnership = useCallback(
-    (isCurrent: () => boolean) => {
-      if (!isCurrent() || !isServerBackedMediaPersistence()) return;
-
-      const askOwnership = async (): Promise<ClassroomGenerationOwnership> => {
-        try {
-          const result = await fetchStageMeta(classroomId);
-          if (!isCurrent()) return 'unresolved';
-          const ownership = classroomGenerationOwnership(result);
-          noteStageGenerationOwnership(classroomId, ownership);
-
-          // The standalone route also uses the sidecar to set edit access. The
-          // hosted pane owns that decision at its workspace boundary.
-          if (variant === 'page') {
-            if (result.outcome === 'found') {
-              noteStageOwnership(classroomId, true, { isOwner: result.meta.isOwner });
-              useStageStore.getState().setViewerAccess({ isOwner: result.meta.isOwner });
-            } else if (result.outcome === 'unavailable') {
-              noteStageOwnership(classroomId, false, null);
-            } else {
-              noteStageOwnership(classroomId, true, null);
-            }
-          }
-          return ownership;
-        } catch {
-          if (!isCurrent()) return 'unresolved';
-          noteStageGenerationOwnership(classroomId, 'unresolved');
-          if (variant === 'page') noteStageOwnership(classroomId, false, null);
-          return 'unresolved';
-        }
-      };
-
-      void retryWhileOwnershipUnresolved(askOwnership, { isCurrent });
-    },
-    [classroomId, variant],
   );
 
   const retryClassroom = useCallback(() => {
@@ -287,30 +208,6 @@ export function ClassroomSurface({
     setLoadUnavailable(false);
     setNotFound(false);
     /* eslint-enable react-hooks/set-state-in-effect */
-    // Ownership belongs to the departing course; the new one must re-earn it
-    // before anything it holds may be generated.
-    noteStageGenerationOwnership(classroomId, 'unresolved');
-    generationStartedRef.current = false;
-
-    // Clear previous classroom's media tasks to prevent cross-classroom contamination.
-    // Placeholder IDs (gen_img_1, gen_vid_1) are NOT globally unique across stages,
-    // so stale tasks from a previous classroom would shadow the new one's.
-    const mediaStore = useMediaGenerationStore.getState();
-    mediaStore.revokeObjectUrls();
-    useMediaGenerationStore.setState({ tasks: {} });
-    // Allocations parked by an interrupted run on THIS id must go with them.
-    // Classic placeholders are reused across runs of the same course, so a
-    // survivor would be handed to a different slide of the next deck.
-    clearPendingMediaAllocations(classroomId);
-    clearNarrationAllocations(classroomId);
-
-    // Clear whiteboard history to prevent snapshots from a previous course leaking in.
-    useWhiteboardHistoryStore.getState().clearHistory();
-
-    // Reset edit-time canvas selection/scale: the classroom load paths set
-    // mode:'playback' via raw setState (not setMode), so an unfinished Pro-mode
-    // session in the previous course wouldn't otherwise clear its canvas state.
-    useCanvasStore.getState().resetCanvasState();
 
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let availabilityAttempt = 0;
@@ -361,7 +258,6 @@ export function ClassroomSurface({
     };
     void loadUntilAvailable();
 
-    // Cancel ongoing generation when classroomId changes or component unmounts
     return () => {
       cancelled = true;
       if (loadEpochRef.current === loadEpoch) {
@@ -371,9 +267,8 @@ export function ClassroomSurface({
         activeClassroomIdRef.current = null;
       }
       if (retryTimer) clearTimeout(retryTimer);
-      stop();
     };
-  }, [classroomId, loadClassroom, refreshOwnership, stop, variant]);
+  }, [classroomId, loadClassroom, refreshOwnership, variant]);
 
   // Narration written before this application stored media server-side is a
   // derived key that only this browser can resolve. Both classroom surfaces
@@ -381,111 +276,13 @@ export function ClassroomSurface({
   // narration exactly as the standalone page does.
   useNarrationAdoption(classroomId, { ready: !loading && !error, mayGenerate });
 
-  // Auto-resume generation for pending outlines (owner only). Two independent
-  // ownership facts gate it. The sidecar's per-viewer answer decides whether
-  // this browser may spend the operator's provider budget at all, and fails
-  // closed while unanswered; `generationStartedRef` is deliberately NOT
-  // latched while it refuses, so the effect starts once the answer arrives.
-  // `outlineProducer` then decides whether the browser is the producer: a
-  // course whose document a server job produced is server-owned, not
-  // client-authored, and therefore not this browser's to regenerate. The
-  // reference's transport-persistence UI fence has no counterpart here, so it
-  // stays a constant false.
-  useEffect(() => {
-    if (
-      !shouldResumeClassroomGeneration({
-        loading,
-        error,
-        transportPersistenceFenced: false,
-        generationStarted: generationStartedRef.current,
-        mayGenerate,
-      })
-    ) {
-      return;
-    }
-    const state = useStageStore.getState();
-    // Producer ownership is document data, not conversation status. A
-    // server-job course never starts a second browser-side generator no matter
-    // which chat is open (or whether any chat is open).
-    if (state.outlineProducer === 'server-job') {
-      generationStartedRef.current = true;
-      log.info('[Classroom] A server-side job owns this course; the browser will not generate.');
-      return;
-    }
-
-    const { outlines, scenes, stage, generationComplete } = state;
-
-    // Check if there are pending outlines. A finished deck is frozen for
-    // editing: deleting a slide leaves its outline orphaned, but that must not
-    // be treated as an interrupted generation and regenerated. Only resume
-    // when generation has not completed.
-    const completedOrders = new Set(scenes.map((s) => s.order));
-    const hasPending = !generationComplete && outlines.some((o) => !completedOrders.has(o.order));
-
-    if (hasPending && stage) {
-      generationStartedRef.current = true;
-
-      // Load generation params from sessionStorage (stored by generation-preview before navigating)
-      const genParamsStr = sessionStorage.getItem('generationParams');
-      const params = genParamsStr ? JSON.parse(genParamsStr) : {};
-
-      // Reconstruct imageMapping for the resumed generation. The mapping may
-      // MIX allocated asset ids and IndexedDB data URLs — a source whose cache
-      // write failed materialized its own images — so the resume mapping merges
-      // both, instead of choosing one transport for the whole set and silently
-      // dropping the other half.
-      const pdfImages = (params.pdfImages || []) as Array<
-        { id: string; assetId?: string; storageId?: string } & Record<string, unknown>
-      >;
-      const finishResume = (imageMapping: Record<string, string>) =>
-        generateRemaining({
-          pdfImages: params.pdfImages,
-          imageMapping,
-          stageInfo: {
-            name: stage.name || '',
-            description: stage.description,
-            style: stage.style,
-          },
-          agents: params.agents,
-          userProfile: params.userProfile,
-          languageDirective: params.languageDirective || stage.languageDirective,
-        });
-
-      const imageMapping: Record<string, string> = {};
-      for (const img of pdfImages) {
-        if (img.assetId) imageMapping[img.id] = img.assetId;
-      }
-      const storageIds = pdfImages
-        .filter((img) => !img.assetId && img.storageId)
-        .map((img) => img.storageId as string);
-      void (async () => {
-        if (storageIds.length > 0) {
-          Object.assign(imageMapping, await loadImageMapping(storageIds));
-        }
-        finishResume(imageMapping);
-      })();
-    } else if (outlines.length > 0 && stage) {
-      // All scenes are generated, but some media may not have finished.
-      // Resume media generation for any tasks not yet in IndexedDB.
-      // generateMediaForOutlines skips already-completed tasks automatically.
-      generationStartedRef.current = true;
-      // The deck reached the classroom already fully materialized (e.g. a
-      // single-slide course, or a deck whose last slide finished in
-      // generation-preview), so generateRemaining's completion path never
-      // ran. Record completion now so a later edit/delete is not treated as
-      // an interrupted generation. No-op if already complete or not all
-      // outlines have scenes.
-      useStageStore.getState().markGenerationCompleteIfDone();
-      // Resume media only for outlines that still have a scene. On a finished
-      // deck the user may have deleted a slide, leaving an orphaned outline;
-      // generating its media would waste API calls on a slide that is gone.
-      const materializedOrders = new Set(scenes.map((s) => s.order));
-      const materializedOutlines = outlines.filter((o) => materializedOrders.has(o.order));
-      generateMediaForOutlines(materializedOutlines, stage.id).catch((err) => {
-        log.warn('[Classroom] Media generation resume error:', err);
-      });
-    }
-  }, [loading, error, mayGenerate, generateRemaining]);
+  // A course a server-side generation run produces: the classroom follows the
+  // run (its scenes, media and pauses) and sends it Retry.
+  const runCourse = useRunCourse({ classroomId, ready: !loading && !error });
+  // The pending scene's failure card shows the first outline not yet produced;
+  // the run's guidance belongs there only when that is the scene it stopped at.
+  const pendingOutlineId = useStageStore((s) => s.generatingOutlines[0]?.id);
+  const failureKey = pendingSceneFailureKey(runCourse.failure, pendingOutlineId);
 
   const view = resolveClassroomSurfaceView({
     variant,
@@ -567,10 +364,20 @@ export function ClassroomSurface({
                 </button>
               </div>
             </div>
+          ) : variant === 'pane' && runCourse.generation ? (
+            // The pane is edit-locked and a course being generated is
+            // read-only until its run completes: say so rather than show an
+            // edit chrome that cannot resolve. The run completing clears
+            // `generation` and the course mounts here by itself.
+            <CourseGeneratingPlaceholder
+              status={runCourse.generation.status}
+              href={runCourse.generation.href}
+            />
           ) : (
             <Stage
               classroomId={classroomId}
-              onRetryOutline={mayGenerate ? retrySingleOutline : undefined}
+              generationFailureMessage={failureKey ? t(failureKey) : undefined}
+              onRetryOutline={mayGenerate && runCourse.runId ? runCourse.retryOutline : undefined}
             />
           )}
         </div>
