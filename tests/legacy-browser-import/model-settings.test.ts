@@ -173,72 +173,69 @@ describe('buildModelSettingsProposal', () => {
     ).toBeUndefined();
   });
 
+  // The shipped token plan is the estate's OmniRoute gateway: one key spans
+  // chat, images and speech, so the import must fold the services the plan
+  // filled back into that single provider instead of proposing each adapter.
+  const gateway = 'http://192.168.1.71:20128/v1';
+
   it('imports an enrolled token plan as one provider covering its services', () => {
     const planKey = 'sk-plan';
     const proposal = buildModelSettingsProposal({
-      providerId: 'minimax',
-      modelId: 'MiniMax-M3',
-      tokenPlanEnrollments: { minimax: 'minimax' },
-      providersConfig: {
-        minimax: { apiKey: planKey, baseUrl: 'https://api.minimaxi.com/anthropic/v1' },
-      },
+      providerId: 'openai',
+      modelId: 'auto/best-chat',
+      tokenPlanEnrollments: { omniroute: 'openai' },
+      providersConfig: { openai: { apiKey: planKey, baseUrl: gateway } },
       ttsEnabled: true,
-      ttsProviderId: 'minimax-tts',
+      ttsProviderId: 'openai-tts',
       ttsProvidersConfig: {
-        'minimax-tts': {
-          apiKey: planKey,
-          baseUrl: 'https://api.minimaxi.com',
-          modelId: 'speech-2.8-turbo',
-        },
+        'openai-tts': { apiKey: planKey, baseUrl: gateway, modelId: 'gtts/default' },
       },
       imageGenerationEnabled: true,
-      imageProviderId: 'minimax-image',
-      imageModelId: 'image-01',
-      imageProvidersConfig: {
-        'minimax-image': { apiKey: planKey, baseUrl: 'https://api.minimaxi.com' },
-      },
+      imageProviderId: 'openai-image',
+      imageModelId: 'codex/gpt-5.6-luna-image',
+      imageProvidersConfig: { 'openai-image': { apiKey: planKey, baseUrl: gateway } },
     });
     expect(proposal).toEqual({
-      providers: { minimax: { preset: 'minimax', apiKey: planKey } },
+      providers: { omniroute: { preset: 'omniroute', apiKey: planKey } },
       slots: {
-        llm: 'minimax:MiniMax-M3',
-        tts: 'minimax:speech-2.8-turbo',
-        image: 'minimax:image-01',
+        llm: 'omniroute:auto/best-chat',
+        tts: 'omniroute:gtts/default',
+        image: 'omniroute:codex/gpt-5.6-luna-image',
       },
     });
   });
 
   it('carries models the user added to an enrolled plan', () => {
-    const plan = TOKEN_PLAN_PRESETS.find((entry) => entry.id === 'minimax')!;
+    const plan = TOKEN_PLAN_PRESETS.find((entry) => entry.id === 'omniroute')!;
     const catalogue = [...plan.modalities.llm!.defaultModels!];
     const proposal = buildModelSettingsProposal({
-      providerId: 'minimax',
-      modelId: 'MiniMax-Custom-Preview',
-      tokenPlanEnrollments: { minimax: 'minimax' },
+      providerId: 'openai',
+      modelId: 'auto/custom-preview',
+      tokenPlanEnrollments: { omniroute: 'openai' },
       providersConfig: {
-        minimax: {
+        openai: {
           apiKey: 'sk-plan',
-          baseUrl: 'https://api.minimaxi.com/anthropic/v1',
-          models: [...catalogue.map((id) => ({ id })), { id: 'MiniMax-Custom-Preview' }],
+          baseUrl: gateway,
+          models: [...catalogue.map((id) => ({ id })), { id: 'auto/custom-preview' }],
         },
       },
     });
-    expect(proposal?.providers?.minimax).toEqual({
-      preset: 'minimax',
+    expect(proposal?.providers?.omniroute).toEqual({
+      preset: 'omniroute',
       apiKey: 'sk-plan',
-      models: [...catalogue, 'MiniMax-Custom-Preview'],
+      models: [...catalogue, 'auto/custom-preview'],
     });
-    expect(proposal?.slots).toEqual({ llm: 'minimax:MiniMax-Custom-Preview' });
+    expect(proposal?.slots).toEqual({ llm: 'omniroute:auto/custom-preview' });
 
     // Only the plan's own models: nothing to list.
     expect(
       buildModelSettingsProposal({
-        tokenPlanEnrollments: { minimax: 'minimax' },
+        tokenPlanEnrollments: { omniroute: 'openai' },
         providersConfig: {
-          minimax: { apiKey: 'sk-plan', baseUrl: '', models: catalogue.map((id) => ({ id })) },
+          openai: { apiKey: 'sk-plan', baseUrl: '', models: catalogue.map((id) => ({ id })) },
         },
-      })?.providers?.minimax,
-    ).toEqual({ preset: 'minimax', apiKey: 'sk-plan' });
+      })?.providers?.omniroute,
+    ).toEqual({ preset: 'omniroute', apiKey: 'sk-plan' });
   });
 
   it('treats a key on a plan provider without enrollment as a personal key', () => {
@@ -647,23 +644,25 @@ describe('saveModelSettingsProposal', () => {
   });
 });
 
-it('imports an enrolled Kimi plan without inventing a historical fetch assignment', () => {
+it('imports an enrolled plan without inventing a fetch assignment it does not adapt', () => {
+  // The gateway plan adapts chat, images, video and speech; web fetch has no
+  // adapter there, so no slot may be invented for it.
   const proposal = buildModelSettingsProposal({
-    providerId: 'kimi',
-    modelId: 'kimi-for-coding',
-    providersConfig: { kimi: { apiKey: 'sk-plan-key' } },
-    tokenPlanEnrollments: { kimi: 'kimi' },
-    webSearchProviderId: 'kimi',
+    providerId: 'openai',
+    modelId: 'auto/best-chat',
+    providersConfig: { openai: { apiKey: 'sk-plan-key' } },
+    tokenPlanEnrollments: { omniroute: 'openai' },
     webSearchEnabled: true,
-    webSearchProvidersConfig: { kimi: { apiKey: 'sk-plan-key', enabled: true } },
+    webSearchProviderId: 'brave',
+    webSearchProvidersConfig: { brave: { apiKey: '', baseUrl: 'https://search.brave.com', enabled: true } },
   });
-  expect(proposal?.providers?.['kimi-coding-plan']).toMatchObject({
-    preset: 'kimi-coding-plan',
+  expect(proposal?.providers?.omniroute).toMatchObject({
+    preset: 'omniroute',
     apiKey: 'sk-plan-key',
   });
   expect(proposal?.slots).toMatchObject({
-    llm: 'kimi-coding-plan:kimi-for-coding',
-    webSearch: 'kimi-coding-plan',
+    llm: 'omniroute:auto/best-chat',
+    webSearch: 'brave',
   });
   expect(proposal?.slots).not.toHaveProperty('webFetch');
 });

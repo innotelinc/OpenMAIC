@@ -285,6 +285,12 @@ describe('PPT element reference Route → Director → real call_agent L2', () =
     delete process.env[nativeFlag];
     vi.resetModules();
     vi.stubEnv('DATABASE_URL', '');
+    // The repo ships openmaic.yml, the deployment's model config, and the route
+    // validates it before accepting a request: its provider references have to
+    // resolve here too, or every call answers 400 before the Director runs.
+    vi.stubEnv('OMNIROUTE_API_KEY', 'test-gateway-key');
+    vi.stubEnv('SEARXNG_BASE_URL', 'http://searxng:8080');
+    vi.stubEnv('PDF_MINERU_BASE_URL', 'http://mineru:8000');
     mocks.persistenceProvider.mockReset().mockResolvedValue({ runtimeStore: {} });
     mocks.buildAgent.mockReset();
     mocks.streamLLM.mockReset();
