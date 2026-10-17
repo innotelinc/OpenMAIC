@@ -21,7 +21,8 @@ import type { ModelSettingsView } from '@/lib/model-settings/client';
 // the shape is derived from what the server would answer.
 const providers = {
   operator: { preset: 'deepseek', apiKey: 'sk-operator-secret-0001' },
-  voice: { preset: 'minimax', apiKey: 'sk-operator-secret-0002' },
+  // A single-capability speech account: the token plans here declare none.
+  voice: { preset: 'openai-tts', apiKey: 'sk-operator-secret-0002' },
 };
 
 function viewFor(config: ModelConfigLayer['config'] | null): ModelSettingsView {
@@ -38,7 +39,9 @@ const slot = (view: ModelSettingsView, id: string) =>
 const plan = (view: ModelSettingsView, id: string) =>
   view.presets.find((preset) => preset.id === id)!;
 
-beforeEach(() => vi.stubEnv('ALLOW_LOCAL_NETWORKS', ''));
+// The shipped plan is the estate's gateway on the server's own network: it is
+// offered to the workspace only with local endpoints allowed.
+beforeEach(() => vi.stubEnv('ALLOW_LOCAL_NETWORKS', 'true'));
 afterEach(() => {
   setDeploymentConfigForTests();
   vi.unstubAllEnvs();
@@ -128,18 +131,18 @@ describe('a mixed deployment (llm locked, user keys allowed)', () => {
     expect(settingsSections(view).modelServices).toContain('image');
   });
 
-  it('keeps plans that can still fill media or search slots', () => {
+  it('keeps the plan while it can still fill media slots', () => {
     const view = viewFor(config);
-    expect(tokenPlanCanChange(view, plan(view, 'tokendance'))).toBe(true);
-    expect(tokenPlanCanChange(view, plan(view, 'kimi-coding-plan'))).toBe(true);
+    expect(tokenPlanCanChange(view, plan(view, 'omniroute'))).toBe(true);
     expect(settingsSections(view).tokenPlan).toBe(true);
   });
 
-  it('keeps Kimi available when only web fetch can still be set', () => {
+  it('hides the plan once only search and fetch slots are left', () => {
+    // The gateway plan declares no search or fetch, so locking llm and every
+    // media slot leaves it nothing to change.
     const view = viewFor({ ...config, lock: ['llm', 'tts', 'image', 'video', 'webSearch'] });
-    expect(tokenPlanCanChange(view, plan(view, 'kimi-coding-plan'))).toBe(true);
-    expect(tokenPlanCanChange(view, plan(view, 'tokendance'))).toBe(false);
-    expect(settingsSections(view).tokenPlan).toBe(true);
+    expect(tokenPlanCanChange(view, plan(view, 'omniroute'))).toBe(false);
+    expect(settingsSections(view).tokenPlan).toBe(false);
   });
 
   it('hides Token Plan when no plan can fill an unlocked slot', () => {
@@ -226,7 +229,7 @@ describe('narration voices', () => {
   it('does not for narration without user voices', () => {
     const view = viewFor({
       providers,
-      slots: { llm: 'operator:deepseek-v4-pro', tts: 'voice:speech-2.8-turbo' },
+      slots: { llm: 'operator:deepseek-v4-pro', tts: 'voice' },
       lock: 'all',
     });
     expect(narrationVoicesManageable(view)).toBe(false);
@@ -245,12 +248,13 @@ describe('connected token plans', () => {
       notices: [],
     });
     const connected = modelSettingsView({
-      config: { providers: { tokendance: { preset: 'tokendance', apiKey: 'sk-plan-key-0001' } } },
+      config: { providers: { omniroute: { preset: 'omniroute', apiKey: 'sk-plan-key-0001' } } },
       revision: 1,
       unreadableSecrets: [],
     });
-    expect(tokenPlanListed(connected, plan(connected, 'tokendance'))).toBe(true);
-    expect(tokenPlanListed(connected, plan(connected, 'minimax'))).toBe(false);
+    expect(tokenPlanListed(connected, plan(connected, 'omniroute'))).toBe(true);
+    // A single-capability provider is not a plan and is never listed here.
+    expect(tokenPlanListed(connected, plan(connected, 'kimi'))).toBe(false);
     // Everything is locked: the connected plan changes nothing, so Token Plan is hidden.
     expect(settingsSections(connected).tokenPlan).toBe(false);
     expect(settingsSections(modelSettingsView(null)).tokenPlan).toBe(false);

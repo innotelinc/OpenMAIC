@@ -41,24 +41,19 @@ describe('server web search config', () => {
     );
   });
 
-  it('allows the web-search base URL every built-in token plan writes to client settings', async () => {
+  it('trusts no base URL for a plan that declares no web search', async () => {
     const { resolveSafeClientWebSearchBaseUrl } = await import('@/lib/server/web-search-config');
     const { TOKEN_PLAN_PRESETS } = await import('@/lib/config/token-plan-presets');
     const targets = TOKEN_PLAN_PRESETS.flatMap((preset) =>
       preset.modalities.webSearch ? [preset.modalities.webSearch] : [],
     );
 
-    expect(targets.length).toBeGreaterThan(0);
-    for (const target of targets) {
-      expect(
-        resolveSafeClientWebSearchBaseUrl(
-          target.providerId as Parameters<typeof resolveSafeClientWebSearchBaseUrl>[0],
-          target.baseUrl,
-        ),
-      ).toBe(target.baseUrl.replace(/\/+$/, ''));
-    }
+    // OmniRoute serves search on its own shape (/v1/search), which this app has
+    // no adapter for, so the shipped plan declares none — and no URL is trusted
+    // on its behalf.
+    expect(targets).toEqual([]);
     expect(() =>
-      resolveSafeClientWebSearchBaseUrl('bocha', 'https://tokendance.space/gateway/other'),
+      resolveSafeClientWebSearchBaseUrl('bocha', 'https://gateway.example/v1'),
     ).toThrow('Unsupported Bocha base URL');
   });
 

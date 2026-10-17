@@ -351,38 +351,38 @@ describe('Token Plan → provider and recommended slots', () => {
   it('connecting adds the plan provider and fills the empty slots it recommends', async () => {
     const plan: PresetView = {
       ...chatPreset,
-      id: 'tokendance',
-      name: 'TokenDance',
+      id: 'omniroute',
+      name: 'OmniRoute',
       recommended: { llm: 'acme-large', 'course.content.slide': 'acme-small' },
     };
     const view = makeView({ presets: [plan] });
     const added = {
       ...view,
-      providers: [{ ...workspaceProvider('tokendance', plan) }],
+      providers: [{ ...workspaceProvider('omniroute', plan) }],
     };
     const { apply, changes } = recordingApply(() => added);
     mount(createElement(TokenPlanSettings, { view, apply }));
-    click(byText('TokenDance'));
-    type(byLabel('settings.tokenPlan.apiKey'), 'td-key-123456');
+    click(byText('OmniRoute'));
+    type(byLabel('settings.tokenPlan.apiKey'), 'omni-key-123456');
     act(() => {
       (document.body.querySelector('form') as HTMLFormElement).requestSubmit();
     });
     await flush();
     expect(changes).toEqual([
-      { kind: 'provider', id: 'tokendance', preset: 'tokendance', apiKey: 'td-key-123456' },
+      { kind: 'provider', id: 'omniroute', preset: 'omniroute', apiKey: 'omni-key-123456' },
       {
         kind: 'slots',
-        set: { llm: 'tokendance:acme-large', 'course.content.slide': 'tokendance:acme-small' },
+        set: { llm: 'omniroute:acme-large', 'course.content.slide': 'omniroute:acme-small' },
       },
     ]);
   });
 
   it('disconnecting removes the plan provider', async () => {
-    const plan: PresetView = { ...chatPreset, id: 'tokendance', name: 'TokenDance' };
-    const view = makeView({ presets: [plan], providers: [workspaceProvider('tokendance', plan)] });
+    const plan: PresetView = { ...chatPreset, id: 'omniroute', name: 'OmniRoute' };
+    const view = makeView({ presets: [plan], providers: [workspaceProvider('omniroute', plan)] });
     const { apply, changes } = recordingApply(() => view);
     mount(createElement(TokenPlanSettings, { view, apply }));
-    click(byText('TokenDance'));
+    click(byText('OmniRoute'));
     expect(document.body.textContent).toContain('settings.tokenPlan.statusConnected');
     act(() => {
       byLabel('settings.tokenPlan.disconnect').dispatchEvent(
@@ -394,7 +394,7 @@ describe('Token Plan → provider and recommended slots', () => {
     await flush();
     click(byText('settings.tokenPlan.disconnect', '[role="alertdialog"] button'));
     await flush();
-    expect(changes).toEqual([{ kind: 'remove-provider', id: 'tokendance' }]);
+    expect(changes).toEqual([{ kind: 'remove-provider', id: 'omniroute' }]);
   });
 });
 

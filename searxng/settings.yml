@@ -1,0 +1,27 @@
+# SearXNG for the classroom's research step.
+#
+# The app's web-search slot had been pointed at its keyless Brave fallback,
+# which is rate-limited (HTTP 429) and fails the research step at random.
+# SearXNG needs no key, so research works without one.
+use_default_settings: true
+
+server:
+  # Container-local: only the classroom reaches it, over the compose network.
+  secret_key: "01de45616320c0d361f7136ec531e19e33dcdf0bac76e59ed5bade0c70ed8272"
+  # The limiter blocks the JSON API from non-browser clients, which is exactly
+  # how lib/web-search/searxng.ts calls it.
+  limiter: false
+  image_proxy: true
+  public_instance: false
+
+search:
+  # `format=json` is off in the stock config and the app asks for it.
+  formats:
+    - html
+    - json
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "en"
+
+ui:
+  static_use_hash: true

@@ -1,0 +1,28 @@
+# MinerU runs as its own compose project so the classroom's own compose file
+# stays a clean checkout of upstream; it joins that stack's network instead.
+name: openmaic-mineru
+
+services:
+  mineru:
+    build: ./mineru
+    image: openmaic-mineru:3.4.5
+    container_name: openmaic-mineru
+    restart: unless-stopped
+    # The pipeline backend peaks around 2 GiB on a long PDF, and this host's
+    # 8 GiB is shared with the classroom; the cap keeps a runaway parse from
+    # taking the classroom down with it.
+    mem_limit: 4g
+    volumes:
+      - mineru-cache:/root/.cache
+    networks:
+      - classroom
+
+networks:
+  # The classroom's own default network, so PDF_MINERU_BASE_URL can name the
+  # container instead of the host.
+  classroom:
+    name: openmaic_default
+    external: true
+
+volumes:
+  mineru-cache:

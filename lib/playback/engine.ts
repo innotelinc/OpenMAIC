@@ -654,11 +654,17 @@ export class PlaybackEngine {
           .then((audioStarted) => {
             if (!this.isCurrentGeneration(generation)) return;
             if (!audioStarted) {
-              // No pre-generated audio — try browser-native TTS only when it is
-              // the selected provider AND actually enabled (opt-in, #665).
+              // No pre-generated audio — speak with the browser when browser
+              // speech is the selected provider (opt-in, #665), and also when
+              // the deployment configures no TTS provider at all: a classroom
+              // whose narration text exists but was never synthesized (no
+              // audioId, no key) must still be heard, not silently timed out.
+              const selection = ttsSelection();
+              const browserSpeech =
+                selection === null || selection.providerId === 'browser-native-tts';
               if (
                 hasText &&
-                ttsSelection()?.providerId === 'browser-native-tts' &&
+                browserSpeech &&
                 typeof window !== 'undefined' &&
                 window.speechSynthesis
               ) {

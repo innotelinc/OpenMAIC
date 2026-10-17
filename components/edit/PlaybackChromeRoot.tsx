@@ -1588,16 +1588,23 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
             }
             break;
           case 'ArrowUp':
+          case 'ArrowDown': {
+            // The volume keys belong to the fullscreen presentation, where the
+            // arrows cannot page the slide. Outside it they do, and letting them
+            // drive narration volume meant a few presses scrolled the lesson
+            // *and* faded the narration to zero, where the stored volume stayed
+            // for every later visit.
+            if (!isPresenting) return;
             event.preventDefault();
-            setTTSVolume(ttsVolume + 0.1);
+            setTTSVolume(event.key === 'ArrowUp' ? ttsVolume + 0.1 : ttsVolume - 0.1);
             break;
-          case 'ArrowDown':
-            event.preventDefault();
-            setTTSVolume(ttsVolume - 0.1);
-            break;
+          }
           case 'm':
           case 'M':
             event.preventDefault();
+            // Unmuting a narration whose volume was faded to zero would stay
+            // silent, so the toggle restores an audible level.
+            if (ttsMuted && ttsVolume === 0) setTTSVolume(1);
             setTTSMuted(!ttsMuted);
             break;
           case 's':

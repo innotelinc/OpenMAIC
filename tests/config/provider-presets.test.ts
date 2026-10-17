@@ -66,18 +66,24 @@ describe('provider presets', () => {
     expect(PROVIDER_PRESETS.filter((preset) => preset.kind === 'token-plan')).toHaveLength(
       TOKEN_PLAN_PRESETS.length,
     );
-    const minimax = getProviderPreset('minimax')!;
-    expect(minimax.kind).toBe('token-plan');
-    expect(Object.keys(minimax.capabilities).sort()).toEqual(
-      ['chat', 'image', 'tts', 'video', 'webSearch'].sort(),
+    // The deployment ships one plan: OmniRoute, the estate's gateway.
+    const omniroute = getProviderPreset('omniroute')!;
+    expect(omniroute.kind).toBe('token-plan');
+    expect(Object.keys(omniroute.capabilities).sort()).toEqual(
+      ['chat', 'image', 'video'].sort(),
     );
-    // The coding plan is not the Moonshot open platform, so the chat provider keeps its id.
-    expect(getProviderPreset('kimi')?.kind).toBe('single');
-    expect(Object.keys(getProviderPreset('kimi-coding-plan')!.capabilities)).toEqual([
-      'chat',
-      'webSearch',
-      'webFetch',
-    ]);
+    // The retired vendor plans leave their chat registries as ordinary
+    // single-capability presets, not token plans.
+    expect(getProviderPreset('minimax')?.kind).toBe('single');
+    expect(getProviderPreset('minimax')?.capabilities).toEqual({
+      chat: { registryId: 'minimax' },
+    });
+    expect(getProviderPreset('tokendance')?.kind).toBe('single');
+    expect(getProviderPreset('kimi-coding-plan')).toBeUndefined();
+    // The shared Kimi account still spans chat, search and fetch.
+    expect(Object.keys(getProviderPreset('kimi')!.capabilities).sort()).toEqual(
+      ['chat', 'webSearch', 'webFetch'].sort(),
+    );
     expect(getProviderPreset('kimi')?.capabilities).toEqual({
       chat: { registryId: 'kimi' },
       webSearch: { registryId: 'kimi' },
@@ -86,15 +92,18 @@ describe('provider presets', () => {
   });
 
   it('carries plan recommendations onto slots', () => {
-    const tokendance = getProviderPreset('tokendance')!;
-    expect(tokendance.recommended).toMatchObject({
-      llm: 'cogevol-base',
-      'course.content.slide': 'cogevol-slide-0828',
-      'course.content.interactive': 'cogevol-interactive-0828',
-      // Web search has no models: the plan's search serves it by itself.
-      webSearch: 'bocha',
+    const omniroute = getProviderPreset('omniroute')!;
+    expect(omniroute.recommended).toMatchObject({
+      llm: 'auto/best-chat',
+      'course.content.slide': 'auto/best-coding',
+      'course.content.interactive': 'auto/best-coding',
+      agent: 'auto/best-chat',
+      image: 'codex/gpt-5.6-luna-image',
+      video: 'veoaifree-web/seedance',
     });
-    expect(getProviderPreset('minimax')!.recommended).toMatchObject({ webSearch: 'minimax' });
+    // Speech is not recommended: the gateway holds no speech credentials, so a
+    // tts assignment here would be a slot that errors on every call.
+    expect(omniroute.recommended).not.toHaveProperty('tts');
     for (const preset of PROVIDER_PRESETS) {
       for (const [slot, model] of Object.entries(preset.recommended ?? {})) {
         expect(isSlotId(slot), `${preset.id} → ${slot}`).toBe(true);
@@ -103,13 +112,6 @@ describe('provider presets', () => {
         if (models) expect(models, `${preset.id} → ${slot}`).toContain(model);
       }
     }
-  });
-});
-
-it('preserves the Coding Plan endpoint for web fetch', () => {
-  expect(getProviderPreset('kimi-coding-plan')?.capabilities.webFetch).toEqual({
-    registryId: 'kimi',
-    baseUrl: 'https://api.kimi.com/coding/v1',
   });
 });
 
@@ -125,9 +127,5 @@ it('lets any token plan declare a fetch provider and endpoint', () => {
     webFetch: { registryId: 'kimi', baseUrl: 'https://api.kimi.ai/coding/v1' },
   });
   expect(preset.recommended).toEqual({ webFetch: 'kimi' });
-  expect(getProviderPreset('kimi-coding-plan')?.recommended).toMatchObject({
-    webFetch: 'kimi',
-    webSearch: 'kimi',
-  });
-  expect(getProviderPreset('kimi')?.recommended).not.toHaveProperty('webFetch');
+  expect(getProviderPreset('kimi')?.recommended).toEqual({ webSearch: 'kimi' });
 });

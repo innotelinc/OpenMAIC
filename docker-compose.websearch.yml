@@ -1,0 +1,21 @@
+# Keyless web search for the classroom's research step, on the classroom's own
+# network. Its own project so the classroom's compose file stays upstream-clean.
+name: openmaic-websearch
+
+services:
+  searxng:
+    image: searxng/searxng:latest
+    container_name: openmaic-searxng
+    restart: unless-stopped
+    # Small and bounded: it only serves the classroom's research queries.
+    mem_limit: 1g
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    networks:
+      - classroom
+
+networks:
+  # The classroom's default network, so SEARXNG_BASE_URL can name the container.
+  classroom:
+    name: openmaic_default
+    external: true

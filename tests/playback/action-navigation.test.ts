@@ -698,6 +698,54 @@ describe('PlaybackEngine action navigation', () => {
     expect(onSpeechEnd).not.toHaveBeenCalled();
   });
 
+  it('speaks with the browser when the deployment configures no TTS provider', async () => {
+    // A classroom generated without any TTS provider carries narration text
+    // but no audio clips. Silently timing out each line is not narration: the
+    // browser reads it, exactly as it does when browser speech is selected.
+    const spoken: string[] = [];
+    vi.stubGlobal(
+      'SpeechSynthesisUtterance',
+      class {
+        text: string;
+        rate = 1;
+        volume = 1;
+        lang = 'en-US';
+        voice?: SpeechSynthesisVoice;
+        onend?: () => void;
+        onerror?: (event: { error: string }) => void;
+        constructor(text: string) {
+          this.text = text;
+        }
+      },
+    );
+    vi.stubGlobal('window', {
+      speechSynthesis: {
+        // A voice is installed, so the engine speaks on this tick instead of
+        // waiting on the `voiceschanged` window a voice-less browser needs.
+        getVoices: () => [{ voiceURI: 'v1', lang: 'en-US' }],
+        cancel: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        speak: vi.fn((utterance: { text: string }) => spoken.push(utterance.text)),
+      },
+    });
+    setModelSettingsViewForTests({});
+
+    const { engine: actionEngine } = createActionEngine();
+    const { player } = createAudioPlayer(async () => false);
+    const engine = new PlaybackEngine(
+      [scene([speech('a', 'Narrated line.')])],
+      actionEngine,
+      player,
+    );
+
+    engine.start();
+    await flushPromises();
+
+    expect(spoken).toEqual(['Narrated line.']);
+    setModelSettingsViewForTests(null);
+  });
+
   it('jumping to the last line completes through normal completion flow', async () => {
     vi.useFakeTimers();
     const { engine: actionEngine } = createActionEngine();

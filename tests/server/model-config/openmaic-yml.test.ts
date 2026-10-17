@@ -9,7 +9,7 @@ import {
   parseModelConfig,
 } from '@/lib/server/model-config/openmaic-yml';
 
-const env = { MINIMAX_API_KEY: 'sk-test' };
+const env = { OMNIROUTE_API_KEY: 'sk-test' };
 
 function issuesOf(text: string, overrides: ConfigEnv = env): readonly string[] {
   try {
@@ -23,34 +23,34 @@ function issuesOf(text: string, overrides: ConfigEnv = env): readonly string[] {
 
 const EXAMPLE = `
 providers:
-  minimax:
-    preset: minimax
-    apiKey: \${MINIMAX_API_KEY}
+  omniroute:
+    preset: omniroute
+    apiKey: \${OMNIROUTE_API_KEY}
   local:
     preset: openai-compatible
     baseUrl: http://ollama:11434/v1
 
 slots:
-  llm: minimax:MiniMax-M3
+  llm: omniroute:auto/best-chat
   course.content.slide:
-    model: minimax:MiniMax-M3
+    model: omniroute:auto/best-coding
     thinking: { enabled: false }
-    fallback: minimax:MiniMax-M2.7
+    fallback: omniroute:auto/best-chat
   classroom: local:qwen3:8b
-  tts: minimax:speech-2.8-turbo
+  image: omniroute:codex/gpt-5.6-luna-image
   video: null
 
-lock: [tts, video]
+lock: [image, video]
 allowUserKeys: false
 `;
 
 describe('parseModelConfig', () => {
   it('accepts the RFC example and interpolates secrets', () => {
     const config = parseModelConfig(EXAMPLE, { env });
-    expect(config.providers?.minimax.apiKey).toBe('sk-test');
+    expect(config.providers?.omniroute.apiKey).toBe('sk-test');
     expect(config.slots?.video).toBeNull();
     expect(config.slots?.classroom).toBe('local:qwen3:8b');
-    expect(config.lock).toEqual(['tts', 'video']);
+    expect(config.lock).toEqual(['image', 'video']);
     expect(config.allowUserKeys).toBe(false);
   });
 
@@ -88,7 +88,7 @@ describe('parseModelConfig', () => {
   it('refuses an unset environment variable, naming the field and the variable', () => {
     const issues = issuesOf(EXAMPLE, {});
     expect(issues).toContainEqual(
-      'providers.minimax.apiKey: environment variable MINIMAX_API_KEY is not set',
+      'providers.omniroute.apiKey: environment variable OMNIROUTE_API_KEY is not set',
     );
   });
 
@@ -116,15 +116,17 @@ describe('parseModelConfig', () => {
     expect(issuesOf('slots:\n  llm: ghost:model\n')).toEqual([
       'slots.llm: provider "ghost" is not declared under providers',
     ]);
-    const kimi =
-      'providers:\n  kimi:\n    preset: kimi-coding-plan\n    apiKey: k\nslots:\n  tts: kimi:voice\n';
+    const kimi = 'providers:\n  kimi:\n    preset: kimi\n    apiKey: k\nslots:\n  tts: kimi:voice\n';
     expect(issuesOf(kimi)).toEqual([
-      'slots.tts: provider "kimi" (preset "kimi-coding-plan") does not offer tts',
+      'slots.tts: provider "kimi" (preset "kimi") does not offer tts',
     ]);
   });
 
   it('checks the fallback model like the primary one', () => {
-    const text = `${EXAMPLE}\n`.replace('fallback: minimax:MiniMax-M2.7', 'fallback: ghost:model');
+    const text = `${EXAMPLE}\n`.replace(
+      'fallback: omniroute:auto/best-chat',
+      'fallback: ghost:model',
+    );
     expect(issuesOf(text)).toEqual([
       'slots.course.content.slide.fallback: provider "ghost" is not declared under providers',
     ]);
@@ -341,7 +343,7 @@ describe('loadModelConfigFile', () => {
   it('reads openmaic.yml from the working directory', () => {
     const dir = tempDir();
     fs.writeFileSync(path.join(dir, 'openmaic.yml'), EXAMPLE);
-    expect(loadModelConfigFile(env, dir)?.slots?.llm).toBe('minimax:MiniMax-M3');
+    expect(loadModelConfigFile(env, dir)?.slots?.llm).toBe('omniroute:auto/best-chat');
   });
 
   it('reads the file named by OPENMAIC_CONFIG, and refuses a missing one', () => {

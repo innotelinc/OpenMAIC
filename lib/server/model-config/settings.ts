@@ -50,6 +50,8 @@ import {
   presetRegionalEndpointTemplate,
 } from '@/lib/config/official-endpoints';
 
+import { allowLocalNetworksEnabled } from '@/lib/server/ssrf-guard';
+
 import { isForceDisabled, isLocalEndpoint } from './media';
 import {
   checkModelConfigShape,
@@ -351,6 +353,10 @@ function localChatDefault(preset: ProviderPreset): boolean {
  * region as a placeholder (it takes its official regional endpoint).
  */
 function needsOwnEndpoint(preset: ProviderPreset): boolean {
+  // A token plan declares the endpoint of every capability it serves (the
+  // shipped gateway plan names its own routes), so a workspace provider of it
+  // reaches the plan without naming a base URL of its own.
+  if (preset.kind === 'token-plan' && !preset.requiresBaseUrl) return false;
   return (
     preset.requiresBaseUrl === true ||
     localChatDefault(preset) ||
@@ -383,8 +389,12 @@ function workspacePresetProblem(preset: ProviderPreset): string | undefined {
   ][]) {
     if (capability === 'chat') continue;
     const endpoint = target.baseUrl ?? registryDefaultBaseUrl(capability, target.registryId);
-    if (endpoint && isLocalEndpoint(endpoint)) {
-      return `The ${preset.name} preset runs on the server's own network; only the deployment (openmaic.yml) can configure it`;
+    // The operator's local-network opt-in is exactly the permission a preset on
+    // the server's own network needs: without it, only openmaic.yml may point
+    // at a private address; with it, the workspace may add the preset too (the
+    // shipped gateway plan lives there).
+    if (endpoint && isLocalEndpoint(endpoint) && !allowLocalNetworksEnabled()) {
+      return `The ${preset.name} preset runs on the server's own network; only the deployment (openmaic.yml) can configure it, unless ALLOW_LOCAL_NETWORKS is set`;
     }
   }
   return undefined;

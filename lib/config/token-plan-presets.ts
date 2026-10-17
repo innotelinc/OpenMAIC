@@ -1,8 +1,8 @@
 /**
  * Token Plan presets — multi-modal.
  *
- * A token plan (e.g. MiniMax) is often a single key that spans LLM + image +
- * video + TTS + web search + web fetch. A preset declares, per modality, the
+ * A token plan is often a single key that spans LLM + image + video + TTS +
+ * web search + web fetch. A preset declares, per modality, the
  * target provider id + base URL in that modality's registry. "One-click apply" fills the key into
  * every declared modality and lights it up; modalities not declared here are
  * simply "not adapted yet" (at our best — add an entry later to extend).
@@ -148,12 +148,11 @@ export const TOKEN_PLAN_PRESETS: TokenPlanPreset[] = [
         baseUrl: 'http://192.168.1.71:20128/v1',
         defaultModels: ['veoaifree-web/seedance', 'veoaifree-web/veo'],
       },
-      tts: {
-        providerId: 'openai-tts',
-        baseUrl: 'http://192.168.1.71:20128/v1',
-        defaultModelId: 'openai/tts-1',
-        defaultModels: ['openai/tts-1'],
-      },
+      // Speech is deliberately not listed: the gateway knows the speech
+      // routes (openai/minimax/elevenlabs) but holds credentials for none of
+      // them, so `openai/tts-1` answers 400 "No credentials for provider:
+      // openai". A slot that cannot synthesize is worse than an unset one —
+      // narration falls back to the browser's own voices instead of failing.
     },
   },
 ];

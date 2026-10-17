@@ -5,6 +5,9 @@
  * service: the plan's recommended configuration is applied, and when it would
  * replace models the workspace picked the panel asks first.
  *
+ * The deployment ships exactly one plan (OmniRoute); these tests exercise that
+ * plan, which is the only one the panel can offer.
+ *
  * The i18n hook returns keys (with interpolated values appended).
  */
 import { act, createElement } from 'react';
@@ -44,7 +47,9 @@ const deployment = (config: ModelConfigLayer['config'] | null) =>
 
 const roots: Root[] = [];
 beforeEach(() => {
-  vi.stubEnv('ALLOW_LOCAL_NETWORKS', '');
+  // The shipped plan is the estate's gateway on the server's own network: the
+  // operator's opt-in is what lets the panel offer it.
+  vi.stubEnv('ALLOW_LOCAL_NETWORKS', 'true');
   deployment(null);
 });
 afterEach(() => {
@@ -106,7 +111,7 @@ function byText(text: string, selector = 'button'): HTMLElement {
   return found;
 }
 
-async function connectPlan(name: string, key = 'td-key-123456') {
+async function connectPlan(name: string, key = 'omni-key-123456') {
   act(() => byText(name).click());
   const input = document.body.querySelector<HTMLInputElement>(
     '[aria-label="settings.tokenPlan.apiKey"]',
@@ -126,21 +131,19 @@ const dialog = () => document.body.querySelector('[role="alertdialog"]');
 describe('Token Plan → connecting applies the plan’s recommended configuration', () => {
   it('on a fresh workspace, assigns llm and the course stages without asking', async () => {
     const panel = mountPanel(null);
-    await connectPlan('TokenDance');
+    await connectPlan('OmniRoute');
     expect(dialog()).toBeNull();
     expect(panel.changes).toEqual([
-      { kind: 'provider', id: 'tokendance', preset: 'tokendance', apiKey: 'td-key-123456' },
+      { kind: 'provider', id: 'omniroute', preset: 'omniroute', apiKey: 'omni-key-123456' },
       {
         kind: 'slots',
         set: {
-          llm: 'tokendance:cogevol-base',
-          'course.content.slide': 'tokendance:cogevol-slide-0828',
-          'course.content.interactive': 'tokendance:cogevol-interactive-0828',
-          agent: 'tokendance:deepseek-v4.1-flash',
-          tts: 'tokendance:minimax-speech-2.8-turbo',
-          image: 'tokendance:seedream-5.0-lite',
-          video: 'tokendance:minimax-h3',
-          webSearch: 'tokendance',
+          llm: 'omniroute:auto/best-chat',
+          'course.content.slide': 'omniroute:auto/best-coding',
+          'course.content.interactive': 'omniroute:auto/best-coding',
+          agent: 'omniroute:auto/best-chat',
+          image: 'omniroute:codex/gpt-5.6-luna-image',
+          video: 'omniroute:veoaifree-web/seedance',
         },
       },
     ]);
@@ -148,7 +151,7 @@ describe('Token Plan → connecting applies the plan’s recommended configurati
 
   it('asks before replacing the models the workspace picked, and lists them', async () => {
     const panel = mountPanel(await workspaceWithOwnPicks());
-    await connectPlan('TokenDance');
+    await connectPlan('OmniRoute');
     // Nothing is written until the user chooses.
     expect(panel.changes).toEqual([]);
     const shown = dialog();
@@ -157,42 +160,44 @@ describe('Token Plan → connecting applies the plan’s recommended configurati
     expect(rows).toHaveLength(2);
     // Slot names as the course model map shows them (the id here: the test's
     // translations return keys), then current → recommended.
-    expect(rows[0]).toMatch(/^llmDeepSeek V4 Pro · ds → cogevol-base · TokenDance$/);
-    expect(rows[1]).toMatch(/^course\.content\.slide.* → cogevol-slide-0828 · TokenDance$/);
+    expect(rows[0]).toMatch(/^llmDeepSeek V4 Pro · ds → auto\/best-chat · OmniRoute$/);
+    expect(rows[1]).toMatch(
+      /^course\.content\.slide.* → auto\/best-coding · OmniRoute$/,
+    );
   });
 
   it("“Use plan's recommended setup” overwrites the workspace's picks in one change", async () => {
     const panel = mountPanel(await workspaceWithOwnPicks());
-    await connectPlan('TokenDance');
+    await connectPlan('OmniRoute');
     act(() => byText('settings.tokenPlan.applyRecommended', '[role="alertdialog"] button').click());
     await flush();
     expect(panel.changes).toHaveLength(2);
     expect(panel.changes[1]).toMatchObject({
       kind: 'slots',
       set: {
-        llm: 'tokendance:cogevol-base',
-        'course.content.slide': 'tokendance:cogevol-slide-0828',
-        'course.content.interactive': 'tokendance:cogevol-interactive-0828',
+        llm: 'omniroute:auto/best-chat',
+        'course.content.slide': 'omniroute:auto/best-coding',
+        'course.content.interactive': 'omniroute:auto/best-coding',
       },
     });
     expect(panel.config()?.slots).toMatchObject({
-      llm: 'tokendance:cogevol-base',
-      'course.content.slide': 'tokendance:cogevol-slide-0828',
+      llm: 'omniroute:auto/best-chat',
+      'course.content.slide': 'omniroute:auto/best-coding',
     });
   });
 
   it('“Keep my current setup” connects and fills only the empty slots', async () => {
     const panel = mountPanel(await workspaceWithOwnPicks());
-    await connectPlan('TokenDance');
+    await connectPlan('OmniRoute');
     act(() => byText('settings.tokenPlan.applyKeep', '[role="alertdialog"] button').click());
     await flush();
-    expect(panel.changes[0]).toMatchObject({ kind: 'provider', id: 'tokendance' });
+    expect(panel.changes[0]).toMatchObject({ kind: 'provider', id: 'omniroute' });
     const set = (panel.changes[1] as Extract<ModelSettingsChange, { kind: 'slots' }>).set!;
     expect(set).not.toHaveProperty('llm');
     expect(set).not.toHaveProperty('course.content.slide');
     expect(set).toMatchObject({
-      'course.content.interactive': 'tokendance:cogevol-interactive-0828',
-      image: 'tokendance:seedream-5.0-lite',
+      'course.content.interactive': 'omniroute:auto/best-coding',
+      image: 'omniroute:codex/gpt-5.6-luna-image',
     });
     expect(panel.config()?.slots).toMatchObject({
       llm: 'ds:deepseek-v4-pro',
@@ -209,7 +214,7 @@ describe('Token Plan → connecting applies the plan’s recommended configurati
       lock: ['course.content.slide'],
     });
     const panel = mountPanel(picks);
-    await connectPlan('TokenDance');
+    await connectPlan('OmniRoute');
     const rows = [...dialog()!.querySelectorAll('li')].map((row) => row.textContent);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatch(/^llm/);
@@ -217,70 +222,6 @@ describe('Token Plan → connecting applies the plan’s recommended configurati
     await flush();
     const set = (panel.changes[1] as Extract<ModelSettingsChange, { kind: 'slots' }>).set!;
     expect(set).not.toHaveProperty('course.content.slide');
-    expect(set.llm).toMatch(/^tokendance:/);
-  });
-});
-
-it('shows Kimi fetch in the capability list and connects without a builtin conflict', async () => {
-  const panel = mountPanel(null);
-  await connectPlan('Kimi');
-  expect(document.body.textContent).toContain('settings.tokenPlan.capWebFetch');
-  expect(document.body.textContent).toContain('settings.webFetchSettings');
-  act(() => byText('settings.webFetchSettings').click());
-  expect(document.body.querySelector('ul')?.textContent).toContain('kimi');
-  expect(dialog()).toBeNull();
-  expect(panel.changes).toHaveLength(2);
-  expect(panel.config()?.slots?.webFetch).toBe('kimi-coding-plan');
-});
-
-it.each(['keep', 'overwrite'] as const)(
-  'confirms a personal Kimi fetch choice and applies %s',
-  async (mode) => {
-    let initial = await applyModelSettingsChange(null, {
-      kind: 'provider',
-      id: 'personal',
-      preset: 'kimi',
-      apiKey: 'sk-personal-key',
-    });
-    initial = await applyModelSettingsChange(initial, {
-      kind: 'slots',
-      set: { webFetch: 'personal' },
-    });
-    const panel = mountPanel(initial);
-    await connectPlan('Kimi');
-    expect(dialog()?.textContent).toContain('personal');
-    expect(panel.changes).toEqual([]);
-    act(() =>
-      byText(
-        mode === 'keep' ? 'settings.tokenPlan.applyKeep' : 'settings.tokenPlan.applyRecommended',
-        '[role="alertdialog"] button',
-      ).click(),
-    );
-    await flush();
-    expect(panel.config()?.slots?.webFetch).toBe(mode === 'keep' ? 'personal' : 'kimi-coding-plan');
-  },
-);
-
-it('confirms an explicit null fetch choice and preserves it when keeping the setup', async () => {
-  const initial = await applyModelSettingsChange(null, { kind: 'slots', set: { webFetch: null } });
-  const panel = mountPanel(initial);
-  await connectPlan('Kimi');
-  expect(dialog()).not.toBeNull();
-  expect(panel.changes).toEqual([]);
-  act(() => byText('settings.tokenPlan.applyKeep', '[role="alertdialog"] button').click());
-  await flush();
-  expect(panel.config()?.slots?.webFetch).toBeNull();
-});
-
-it('takes over the builtin reader when keeping an explicit chat choice', async () => {
-  const panel = mountPanel(await workspaceWithOwnPicks());
-  await connectPlan('Kimi');
-  expect(dialog()!.querySelectorAll('li')).toHaveLength(1);
-  expect(dialog()?.textContent).not.toContain('Built-in reader');
-  act(() => byText('settings.tokenPlan.applyKeep', '[role="alertdialog"] button').click());
-  await flush();
-  expect(panel.config()?.slots).toMatchObject({
-    llm: 'ds:deepseek-v4-pro',
-    webFetch: 'kimi-coding-plan',
+    expect(set.llm).toMatch(/^omniroute:/);
   });
 });

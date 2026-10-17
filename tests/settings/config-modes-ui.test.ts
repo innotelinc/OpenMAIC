@@ -69,7 +69,9 @@ const roots: Root[] = [];
 let served: ModelSettingsView | null = null;
 
 beforeEach(() => {
-  vi.stubEnv('ALLOW_LOCAL_NETWORKS', '');
+  // The shipped plan is the estate's gateway, reached on the server's own
+  // network, so the workspace may add it only with local endpoints allowed.
+  vi.stubEnv('ALLOW_LOCAL_NETWORKS', 'true');
   served = null;
   vi.stubGlobal(
     'fetch',
@@ -129,7 +131,7 @@ const providers = {
     apiKey: 'sk-operator-secret-0001',
     models: ['deepseek-v4-flash'],
   },
-  voice: { preset: 'minimax', apiKey: 'sk-operator-secret-0002' },
+  voice: { preset: 'openai-tts', apiKey: 'sk-operator-secret-0002' },
 };
 
 /** The view the server answers for a deployment configuration (and a workspace's own). */
@@ -235,7 +237,7 @@ describe('the settings sections', () => {
         providers,
         slots: {
           llm: 'operator:deepseek-v4-pro',
-          tts: 'voice:speech-2.8-turbo',
+          tts: 'voice',
           image: null,
           video: null,
           webSearch: null,

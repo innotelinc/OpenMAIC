@@ -1,0 +1,93 @@
+# Signs the classroom in through Cerulean's Authentik, so the app itself needs
+# no shared access code: the only door to 3000 is this proxy.
+#
+# Runs beside the classroom on its host rather than on the edge host because
+# the app's own port is then closed to the LAN entirely (127.0.0.1 in the
+# classroom's .env) — a LAN host can no longer bypass the sign-in by dialling
+# 192.168.1.59:3000.
+name: openmaic-sso
+
+services:
+  classroom-sso:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.2
+    container_name: classroom-sso
+    restart: unless-stopped
+    # Everything oauth2-proxy needs arrives as OAUTH2_PROXY_* from this file
+    # (mode 600): the client id/secret for the Authentik app `classroom`, the
+    # cookie secret, and the session store URL. No compose interpolation, so a
+    # missing value cannot silently become an empty string.
+    env_file:
+      - .env.classroom-sso
+    command:
+      - --provider=oidc
+      # The issuer Authentik publishes for this application (trailing slash is
+      # part of it).
+      - --oidc-issuer-url=https://auth.cerulean.innotel.us/application/o/classroom/
+      - --oidc-groups-claim=groups
+      - --scope=openid email profile groups
+      # Authentik sets email_verified: false by design; the door is --allowed-group,
+      # so the address alone grants nothing.
+      - --email-domain=*
+      - --insecure-oidc-allow-unverified-email
+      # Who may enter: the atheniq team (AUTHENTIK_CLASSROOM_GROUPS).
+      - --allowed-group=atheniq-admins
+      - --skip-provider-button=true
+      - --cookie-secure=true
+      - --cookie-samesite=lax
+      - --whitelist-domain=.innotel.us
+      # Honours X-Forwarded-Proto/Host from the edge, so redirects come back on
+      # the public name instead of the LAN address.
+      - --reverse-proxy=true
+      - --set-xauthrequest=true
+      - --pass-user-headers=true
+      - --pass-access-token=false
+      - --pass-authorization-header=false
+      # Server-side sessions: an identity in many groups overflows the 4KB
+      # cookie and the edge answers the login callback with "upstream sent too
+      # big header" — a failure that looks like the app being down.
+      - --session-store-type=redis
+      # The classroom streams generation progress as SSE for minutes, and lesson
+      # steps can run long; the 30s default would cut both.
+      - --upstream-timeout=600s
+      - --flush-interval=1s
+      - --upstream=http://openmaic-openmaic-1:3000
+      - --http-address=0.0.0.0:3001
+      - --silence-ping-logging=true
+    ports:
+      # The LAN address the NPM proxy host dials; loopback stays free for the
+      # app itself.
+      - "192.168.1.59:3001:3001"
+    depends_on:
+      - classroom-sso-sessions
+    networks:
+      - classroom
+
+  classroom-sso-sessions:
+    image: redis:7-alpine
+    container_name: classroom-sso-sessions
+    restart: unless-stopped
+    env_file:
+      - .env.classroom-sso
+    # The password reaches redis through the environment rather than the command
+    # line, so `docker inspect` does not carry it.
+    command:
+      - sh
+      - -c
+      - |
+        if [ -z "$$CLASSROOM_SSO_REDIS_PASSWORD" ]; then
+          echo "classroom-sso-sessions: CLASSROOM_SSO_REDIS_PASSWORD is empty; refusing to start." >&2
+          exit 2
+        fi
+        exec redis-server \
+          --requirepass "$$CLASSROOM_SSO_REDIS_PASSWORD" \
+          --save "" \
+          --appendonly no \
+          --maxmemory-policy noeviction
+    networks:
+      - classroom
+
+networks:
+  # The classroom stack's own network, so the proxy reaches the app by name.
+  classroom:
+    name: openmaic_default
+    external: true

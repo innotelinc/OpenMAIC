@@ -104,6 +104,7 @@ import {
 import { downloadAudio, QwenVoiceCloneError, synthesizeQwenVoiceClone } from './qwen-voice-clone';
 import { evictQwenVoiceRegistrationMemo } from './qwen-voice-clone-registration';
 import { splitConcatenatedJsonObjects } from './json-stream';
+import { voiceForModel } from './gemini-voice-alias';
 import {
   VOXCPM_VLLM_MODEL_ID,
   VOXCPM_AUTO_VOICE_ID,
@@ -367,6 +368,7 @@ async function generateOpenAITTS(
   signal: AbortSignal,
 ): Promise<TTSGenerationResult> {
   const baseUrl = config.baseUrl || TTS_PROVIDERS['openai-tts'].defaultBaseUrl;
+  const modelId = config.modelId || 'gpt-4o-mini-tts';
 
   // Use gpt-4o-mini-tts for best quality and intelligent realtime applications
   const response = await ttsFetch(config, `${baseUrl}/audio/speech`, {
@@ -376,9 +378,12 @@ async function generateOpenAITTS(
       'Content-Type': 'application/json; charset=utf-8',
     },
     body: JSON.stringify({
-      model: config.modelId || 'gpt-4o-mini-tts',
+      model: modelId,
       input: text,
-      voice: config.voice,
+      // A gateway serving Gemini speech behind this OpenAI-shaped endpoint
+      // speaks only Gemini voice names, so an OpenAI-selected voice is
+      // translated when the model is Gemini's (lib/audio/gemini-voice-alias).
+      voice: voiceForModel(modelId, config.voice),
       speed: config.speed || 1.0,
       // Ask for a container the browser can decode. OpenAI defaults to mp3, but
       // this same function serves every custom OpenAI-compatible provider and

@@ -54,18 +54,20 @@ describe('resolveSlot', () => {
     expect(resolveSlot('course.content.quiz', [deployment])).toMatchObject({ resolvedAt: 'llm' });
   });
 
-  it('uses the slot’s own assignment with its options, fallback and the preset endpoint', () => {
+  it('uses the slot’s own assignment with its options and fallback', () => {
     const slide = resolveSlot('course.content.slide', [deployment]);
     expect(slide).toMatchObject({
       status: 'assigned',
       resolvedAt: 'course.content.slide',
       providerId: 'td',
       registryId: 'tokendance',
-      baseUrl: 'https://tokendance.space/gateway/v1',
       modelId: 'cogevol-slide-0828',
       thinking: { enabled: false },
       fallback: { providerId: 'mm', registryId: 'minimax', modelId: 'MiniMax-M2.7' },
     });
+    // The provider names no endpoint of its own, so the target carries none:
+    // the adapter applies the registry's (tokendance.space) when it connects.
+    expect(slide.status === 'assigned' && slide.baseUrl).toBeUndefined();
   });
 
   it('prefers a provider’s own base URL over the preset’s', () => {
@@ -117,7 +119,7 @@ describe('resolveSlot', () => {
   it('resolves the same whatever order the layers come in', () => {
     const workspace = layer(
       'workspace',
-      'providers:\n  mm:\n    preset: deepseek\n    apiKey: other\n  mv:\n    preset: minimax\n    apiKey: other\nslots:\n  llm: mm:MiniMax-M3\n  video: mv:MiniMax-Hailuo-2.3\n',
+      'providers:\n  mm:\n    preset: deepseek\n    apiKey: other\n  mv:\n    preset: omniroute\n    apiKey: other\nslots:\n  llm: mm:MiniMax-M3\n  video: mv:veoaifree-web/seedance\n',
     );
     for (const slot of ['llm', 'video', 'course.content.slide'] as const) {
       expect(resolveSlot(slot, [workspace, deployment])).toEqual(
@@ -165,7 +167,7 @@ describe('resolveSlot', () => {
     ['atlascloud', 'qwen/qwen3.5-flash', 'unmet'],
     ['tokendance', 'deepseek-v4-pro', 'met'],
     ['tokendance', 'cogevol-base', 'unknown'],
-    ['kimi-coding-plan', 'kimi-for-coding', 'unknown'],
+    ['kimi', 'kimi-for-coding', 'unknown'],
     ['atlascloud', 'not-in-the-catalogue', 'unknown'],
   ])('reads tool calling for %s:%s from the catalogue as %s', (preset, model, status) => {
     expect(resolveSlot('agent', [agentOn(preset, model)])).toMatchObject({
@@ -262,7 +264,7 @@ describe('resolveSlot', () => {
     expect(() => resolveSlot('llm', [broken])).toThrow('slots.llm: the provider is not declared');
     const wrongCapability: ModelConfigLayer = {
       source: 'workspace',
-      config: { providers: { k: { preset: 'kimi-coding-plan' } }, slots: { tts: 'k:voice' } },
+      config: { providers: { k: { preset: 'kimi' } }, slots: { tts: 'k:voice' } },
     };
     expect(() => resolveSlot('tts', [wrongCapability])).toThrow(/does not offer tts/);
     // Built directly so the parser's own checks cannot mask the resolver's.
@@ -326,8 +328,8 @@ describe('resolveSlot', () => {
     const layer: ModelConfigLayer = {
       source: 'deployment',
       config: {
-        providers: { mm: { preset: 'minimax', apiKey: 'k' } },
-        slots: { tts: { model: 'mm:speech-2.8-turbo', fallback: 'mm:speech-2.8-hd' } },
+        providers: { mm: { preset: 'openai-tts', apiKey: 'k' } },
+        slots: { tts: { model: 'mm:tts-1', fallback: 'mm:tts-1-hd' } },
       },
     };
     expect(() => resolveSlot('tts', [layer])).toThrow(
@@ -376,12 +378,12 @@ describe('resolveSlot with server defaults and locks', () => {
     preset: deepseek
     apiKey: k
   mv:
-    preset: minimax
+    preset: omniroute
     apiKey: k
 slots:
   llm: ds:deepseek-v4-pro
   course.content.slide: ds:deepseek-v4-flash
-  video: mv:MiniMax-Hailuo-2.3
+  video: mv:veoaifree-web/seedance
 `,
   );
 

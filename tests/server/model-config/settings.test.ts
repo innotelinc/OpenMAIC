@@ -23,7 +23,9 @@ const deployment = (config: ModelConfigLayer['config']) =>
   });
 
 beforeEach(() => {
-  vi.stubEnv('ALLOW_LOCAL_NETWORKS', '');
+  // The shipped plan is the estate's gateway, reached on the server's own
+  // network: the workspace view offers it only with local endpoints allowed.
+  vi.stubEnv('ALLOW_LOCAL_NETWORKS', 'true');
   deployment({
     providers: {
       operator: {
@@ -227,11 +229,15 @@ describe('modelSettingsView', () => {
     });
   });
 
-  it('lists the presets a workspace may add, without deployment-only ones', () => {
-    const presets = modelSettingsView(null).presets;
-    const ids = presets.map((preset) => preset.id);
-    expect(ids).toContain('openai');
-    expect(ids).toContain('tavily');
+  it('lists the presets a workspace may add, and the local ones only with the opt-in', () => {
+    // A preset that runs on the server's own network is the operator's to
+    // admit: without the opt-in only openmaic.yml may point at a private
+    // address, so the settings do not offer it.
+    vi.stubEnv('ALLOW_LOCAL_NETWORKS', '');
+    const withoutOptIn = modelSettingsView(null).presets;
+    const withoutOptInIds = withoutOptIn.map((preset) => preset.id);
+    expect(withoutOptInIds).toContain('openai');
+    expect(withoutOptInIds).toContain('tavily');
     for (const deploymentOnly of [
       'bedrock',
       'searxng',
@@ -240,6 +246,17 @@ describe('modelSettingsView', () => {
       'funasr-asr',
       'alidocmind',
     ]) {
+      expect(withoutOptInIds).not.toContain(deploymentOnly);
+    }
+
+    vi.stubEnv('ALLOW_LOCAL_NETWORKS', 'true');
+    const presets = modelSettingsView(null).presets;
+    const ids = presets.map((preset) => preset.id);
+    // The opt-in admits the presets whose endpoint is the server's own network.
+    expect(ids).toContain('comfyui-image');
+    expect(ids).toContain('funasr-asr');
+    // Not the ones only the deployment can hold: an endpoint it names, or a key pair.
+    for (const deploymentOnly of ['bedrock', 'searxng', 'mineru', 'alidocmind']) {
       expect(ids).not.toContain(deploymentOnly);
     }
     const compatible = presets.find((preset) => preset.id === 'openai-compatible')!;
@@ -517,12 +534,7 @@ describe('applyModelSettingsChange', () => {
     for (const [provider, message] of [
       [{ id: 'operator', preset: 'openai' }, /deployment declares this provider id/],
       [{ id: 'b', preset: 'bedrock' }, /Amazon Bedrock/],
-      [
-        { id: 'l', preset: 'openai-compatible', baseUrl: 'http://127.0.0.1:11434/v1' },
-        /Local\/private/,
-      ],
       [{ id: 'z', preset: 'openai-compatible' }, /needs a base URL/],
-      [{ id: 'c', preset: 'comfyui-image' }, /server's own network/],
       [{ id: 'o', preset: 'ollama' }, /needs a base URL/],
       [
         { id: 'u', preset: 'openai-compatible', baseUrl: 'https://user:pw@1.1.1.1/v1' },
@@ -536,6 +548,35 @@ describe('applyModelSettingsChange', () => {
         applyModelSettingsChange(null, { kind: 'provider', ...provider }),
       ).rejects.toThrow(message);
     }
+  });
+
+  it('admits a local endpoint only with the opt-in, and refuses it otherwise', async () => {
+    vi.stubEnv('ALLOW_LOCAL_NETWORKS', '');
+    await expect(
+      applyModelSettingsChange(null, {
+        kind: 'provider',
+        id: 'l',
+        preset: 'openai-compatible',
+        baseUrl: 'http://127.0.0.1:11434/v1',
+      }),
+    ).rejects.toThrow(/Local\/private/);
+    await expect(
+      applyModelSettingsChange(null, { kind: 'provider', id: 'c', preset: 'comfyui-image' }),
+    ).rejects.toThrow(/server's own network/);
+
+    // With the operator's opt-in the same two are a workspace's to add.
+    vi.stubEnv('ALLOW_LOCAL_NETWORKS', 'true');
+    await expect(
+      applyModelSettingsChange(null, {
+        kind: 'provider',
+        id: 'l',
+        preset: 'openai-compatible',
+        baseUrl: 'http://127.0.0.1:11434/v1',
+      }),
+    ).resolves.toMatchObject({ providers: { l: { baseUrl: 'http://127.0.0.1:11434/v1' } } });
+    await expect(
+      applyModelSettingsChange(null, { kind: 'provider', id: 'c', preset: 'comfyui-image' }),
+    ).resolves.toMatchObject({ providers: { c: { preset: 'comfyui-image' } } });
   });
 
   it('keeps custom endpoints to chat: media, search and document services use the preset', async () => {
@@ -603,13 +644,13 @@ describe('applyModelSettingsChange', () => {
   it('drops the assignments a provider can no longer serve once its key is removed', async () => {
     const current = {
       providers: {
-        plan: { preset: 'tokendance', apiKey: 'sk-plan-key-0001' },
+        plan: { preset: 'omniroute', apiKey: 'sk-plan-key-0001' },
         local: { preset: 'ollama', baseUrl: 'https://1.1.1.1/v1', models: ['llama4'] },
       },
       slots: {
-        classroom: 'plan:cogevol-base',
-        'course.outline': { model: 'operator:deepseek-v4-pro', fallback: 'plan:cogevol-base' },
-        webSearch: 'plan',
+        classroom: 'plan:auto/best-chat',
+        'course.outline': { model: 'operator:deepseek-v4-pro', fallback: 'plan:auto/best-chat' },
+        video: 'plan:veoaifree-web/seedance',
         'agent.title': 'local:llama4',
         image: null,
       },
@@ -619,7 +660,7 @@ describe('applyModelSettingsChange', () => {
       applyModelSettingsChange(current, {
         kind: 'provider',
         id: 'plan',
-        preset: 'tokendance',
+        preset: 'omniroute',
         apiKey: 'sk-plan-key-0002',
       }),
     ).resolves.toMatchObject({ slots: current.slots });
@@ -627,10 +668,10 @@ describe('applyModelSettingsChange', () => {
     const next = await applyModelSettingsChange(current, {
       kind: 'provider',
       id: 'plan',
-      preset: 'tokendance',
+      preset: 'omniroute',
       apiKey: '',
     });
-    expect(next.providers?.plan).toEqual({ preset: 'tokendance' });
+    expect(next.providers?.plan).toEqual({ preset: 'omniroute' });
     expect(next.slots).toEqual({ 'agent.title': 'local:llama4', image: null });
     // A provider that needs no key keeps what it serves.
     const keyless = await applyModelSettingsChange(next, {
@@ -664,79 +705,77 @@ describe('applyModelSettingsChange', () => {
     });
     config = await applyModelSettingsChange(config, {
       kind: 'provider',
-      id: 'tokendance',
-      preset: 'tokendance',
+      id: 'omniroute',
+      preset: 'omniroute',
       apiKey: 'sk-plan-key-0001',
     });
     const view = modelSettingsView({ config, revision: 3, unreadableSecrets: [] });
-    const preset = view.presets.find((entry) => entry.id === 'tokendance')!;
-    const provider = view.providers.find((entry) => entry.id === 'tokendance')!;
+    const preset = view.presets.find((entry) => entry.id === 'omniroute')!;
+    const provider = view.providers.find((entry) => entry.id === 'omniroute')!;
     const recommendation = tokenPlanRecommendation(view, preset, provider);
-    const planLlm = `tokendance:${preset.recommended.llm}`;
-    // The locked video is not part of it; llm, a server default, is.
+    const planLlm = `omniroute:${preset.recommended.llm}`;
+    // The locked video is not part of it; llm, a server default, is. The plan
+    // declares no speech, search or fetch, so those slots are never touched.
     expect(recommendation).toEqual({
       llm: planLlm,
-      'course.content.slide': 'tokendance:cogevol-slide-0828',
-      'course.content.interactive': 'tokendance:cogevol-interactive-0828',
-      agent: 'tokendance:deepseek-v4.1-flash',
-      tts: 'tokendance:minimax-speech-2.8-turbo',
-      image: 'tokendance:seedream-5.0-lite',
-      webSearch: 'tokendance',
+      'course.content.slide': 'omniroute:auto/best-coding',
+      'course.content.interactive': 'omniroute:auto/best-coding',
+      agent: 'omniroute:auto/best-chat',
+      image: 'omniroute:codex/gpt-5.6-luna-image',
     });
     // The server's default on llm is a current choice too: the user is asked about it.
     expect(tokenPlanConflicts(view, recommendation).map((c) => [c.slot.slot, c.from])).toEqual([
       ['llm', 'default'],
       ['course.content.slide', 'workspace'],
       ['course.content.interactive', 'workspace'],
-      ['webSearch', 'workspace'],
     ]);
 
     const set = tokenPlanAssignments(view, recommendation, 'overwrite');
     expect(set).toEqual({
       llm: planLlm,
-      'course.content.slide': 'tokendance:cogevol-slide-0828',
+      'course.content.slide': 'omniroute:auto/best-coding',
       // A replaced language-model assignment keeps its fallback.
       'course.content.interactive': {
-        model: 'tokendance:cogevol-interactive-0828',
+        model: 'omniroute:auto/best-coding',
         fallback: 'operator:deepseek-v4-pro',
       },
-      agent: 'tokendance:deepseek-v4.1-flash',
-      tts: 'tokendance:minimax-speech-2.8-turbo',
-      image: 'tokendance:seedream-5.0-lite',
-      webSearch: 'tokendance',
+      agent: 'omniroute:auto/best-chat',
+      image: 'omniroute:codex/gpt-5.6-luna-image',
     });
     const filled = await applyModelSettingsChange(config, { kind: 'slots', set });
     const after = modelSettingsView({ config: filled, revision: 4, unreadableSecrets: [] });
     const effective = (id: string) => after.slots.find((slot) => slot.slot === id)?.effective;
-    expect(effective('webSearch')).toMatchObject({
+    expect(effective('image')).toMatchObject({
       status: 'assigned',
-      providerId: 'tokendance',
-      registryId: 'bocha',
+      providerId: 'omniroute',
+      registryId: 'openai-image',
+      modelId: 'codex/gpt-5.6-luna-image',
     });
     expect(effective('course.content.slide')).toMatchObject({
-      providerId: 'tokendance',
-      modelId: 'cogevol-slide-0828',
+      providerId: 'omniroute',
+      modelId: 'auto/best-coding',
     });
     // A stage the plan does not name keeps the workspace's pick; the plan
     // replaces the server's default model; the locked video stays off.
     expect(effective('course.outline')).toMatchObject({ providerId: 'mine', modelId: 'gpt-5.6' });
-    expect(effective('llm')).toMatchObject({ source: 'workspace', providerId: 'tokendance' });
+    expect(effective('llm')).toMatchObject({ source: 'workspace', providerId: 'omniroute' });
     expect(effective('video')).toMatchObject({ status: 'disabled', source: 'locked' });
 
     // Keeping the current setup fills only the slots with no choice of their
-    // own: the server's default llm stays.
+    // own: the server's default llm stays, and so does the search choice.
     expect(tokenPlanAssignments(view, recommendation, 'keep')).toEqual({
-      agent: 'tokendance:deepseek-v4.1-flash',
-      tts: 'tokendance:minimax-speech-2.8-turbo',
-      image: 'tokendance:seedream-5.0-lite',
+      agent: 'omniroute:auto/best-chat',
+      image: 'omniroute:codex/gpt-5.6-luna-image',
     });
 
-    // Disconnecting frees the slots that named the plan: they follow their parents again.
+    // Disconnecting frees the slots that named the plan: they follow their
+    // parents again, while the workspace's own choices stay (search was turned
+    // off here and the plan never declared it).
     const removed = await applyModelSettingsChange(filled, {
       kind: 'remove-provider',
-      id: 'tokendance',
+      id: 'omniroute',
     });
-    expect(removed.slots).toEqual({ 'course.outline': 'mine:gpt-5.6' });
+    expect(removed.slots).toEqual({ 'course.outline': 'mine:gpt-5.6', webSearch: null });
   });
 
   it('connecting a token plan without a deployment applies the default model and the stages', async () => {
@@ -753,34 +792,34 @@ describe('applyModelSettingsChange', () => {
     });
     config = await applyModelSettingsChange(config, {
       kind: 'provider',
-      id: 'tokendance',
-      preset: 'tokendance',
+      id: 'omniroute',
+      preset: 'omniroute',
       apiKey: 'sk-plan-key-0001',
     });
     const view = modelSettingsView({ config, revision: 3, unreadableSecrets: [] });
-    const preset = view.presets.find((entry) => entry.id === 'tokendance')!;
-    const provider = view.providers.find((entry) => entry.id === 'tokendance')!;
+    const preset = view.presets.find((entry) => entry.id === 'omniroute')!;
+    const provider = view.providers.find((entry) => entry.id === 'omniroute')!;
     const set = tokenPlanAssignments(
       view,
       tokenPlanRecommendation(view, preset, provider),
       'overwrite',
     );
     expect(set).toMatchObject({
-      llm: 'tokendance:cogevol-base',
-      'course.content.slide': 'tokendance:cogevol-slide-0828',
-      'course.content.interactive': 'tokendance:cogevol-interactive-0828',
-      video: 'tokendance:minimax-h3',
+      llm: 'omniroute:auto/best-chat',
+      'course.content.slide': 'omniroute:auto/best-coding',
+      'course.content.interactive': 'omniroute:auto/best-coding',
+      video: 'omniroute:veoaifree-web/seedance',
     });
     const filled = await applyModelSettingsChange(config, { kind: 'slots', set });
     expect(filled.slots).toMatchObject({
-      llm: 'tokendance:cogevol-base',
-      'course.content.slide': 'tokendance:cogevol-slide-0828',
+      llm: 'omniroute:auto/best-chat',
+      'course.content.slide': 'omniroute:auto/best-coding',
     });
     // Removing the plan's key (rather than the plan) frees its slots as well.
     const keyless = await applyModelSettingsChange(filled, {
       kind: 'provider',
-      id: 'tokendance',
-      preset: 'tokendance',
+      id: 'omniroute',
+      preset: 'omniroute',
       apiKey: '',
     });
     expect(keyless.slots).toBeUndefined();

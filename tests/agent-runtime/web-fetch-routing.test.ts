@@ -226,7 +226,7 @@ it('forwards the resolved provider proxy and options through the shared media pa
       config: {
         providers: {
           reader: {
-            preset: 'kimi-coding-plan',
+            preset: 'kimi',
             apiKey: 'test-key',
             proxy: 'http://proxy.example:8080',
             options: { custom: true },
@@ -247,7 +247,8 @@ it('forwards the resolved provider proxy and options through the shared media pa
     expect.objectContaining({
       credentials: {
         apiKey: 'test-key',
-        baseUrl: 'https://api.kimi.com/coding/v1',
+        // Kimi names no endpoint of its own: the adapter applies the
+        // registry's (api.moonshot.cn), so the connection carries none.
         proxy: 'http://proxy.example:8080',
         options: { custom: true },
       },

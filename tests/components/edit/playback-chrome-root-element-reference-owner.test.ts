@@ -405,6 +405,10 @@ describe('PlaybackChromeRoot element-reference ownership', () => {
     stageState.currentSceneId = scene.id;
     stageState.setCurrentSceneId.mockClear();
     settingsState.autoPlayLecture = false;
+    settingsState.ttsMuted = false;
+    settingsState.ttsVolume = 1;
+    settingsState.setTTSMuted.mockClear();
+    settingsState.setTTSVolume.mockClear();
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -811,6 +815,32 @@ describe('PlaybackChromeRoot element-reference ownership', () => {
     });
 
     expect(container.querySelector('[data-testid="owner-pill"]')).toBeNull();
+  });
+
+  it('leaves narration volume alone when the arrows are pressed outside presentation', async () => {
+    await renderOwner();
+
+    const down = new KeyboardEvent('keydown', {
+      key: 'ArrowDown',
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => window.dispatchEvent(down));
+
+    expect(settingsState.setTTSVolume).not.toHaveBeenCalled();
+    expect(down.defaultPrevented).toBe(false);
+  });
+
+  it('restores an audible level when unmuting narration faded to zero', async () => {
+    settingsState.ttsMuted = true;
+    settingsState.ttsVolume = 0;
+    await renderOwner();
+
+    const mute = new KeyboardEvent('keydown', { key: 'm', bubbles: true, cancelable: true });
+    act(() => window.dispatchEvent(mute));
+
+    expect(settingsState.setTTSMuted).toHaveBeenCalledWith(false);
+    expect(settingsState.setTTSVolume).toHaveBeenCalledWith(1);
   });
 
   it('cancels an armed Interactive picker with Escape from playback chrome', async () => {
