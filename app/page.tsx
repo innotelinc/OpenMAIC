@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useDeferredValue } from 'react';
+import { DEFAULT_BRAND } from '@/lib/brand/brand-config';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -766,8 +767,8 @@ function HomePage() {
         {/* ── Logo ── */}
         <div className="relative" data-pro-morph="lockup">
           <img
-            src="/logo-horizontal.png"
-            alt="OpenMAIC"
+            src={DEFAULT_BRAND.logoSrc}
+            alt={DEFAULT_BRAND.productName}
             className={cn(
               'h-12 md:h-16 mb-2 -ml-2 md:-ml-3',
               heroEnter('fade-in zoom-in-90 duration-500 delay-100'),
