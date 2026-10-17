@@ -6,7 +6,6 @@ import { createAccessToken } from '@/lib/server/access-token';
 import { accessCodeAttemptLimiter } from '@/lib/server/attempt-limiter';
 import { clientIdentity, isTrustedProxyIdentity } from '@/lib/server/client-identity';
 import { warnIfAccessCodeIsShort } from '@/lib/server/access-code-warning';
-import { cookiesAreSecure } from '@/lib/server/cookie-secure';
 
 /**
  * Pull the candidate code out of an already-parsed JSON body. Anything that is
@@ -16,6 +15,16 @@ function readCandidateCode(body: unknown): string | null {
   if (typeof body !== 'object' || body === null) return null;
   const candidate = (body as { code?: unknown }).code;
   return typeof candidate === 'string' && candidate.length > 0 ? candidate : null;
+}
+
+/**
+ * Whether this request arrived over TLS. Behind the edge proxy the app sees
+ * plain http, so `x-forwarded-proto` is what says otherwise.
+ */
+function requestIsSecure(request: Request): boolean {
+  const forwarded = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();
+  if (forwarded) return forwarded === 'https';
+  return new URL(request.url).protocol === 'https:';
 }
 
 export async function POST(request: Request) {
@@ -74,9 +83,9 @@ export async function POST(request: Request) {
     sameSite: 'lax',
     path: '/',
     maxAge: ACCESS_TOKEN_MAX_AGE_SECONDS,
-    // The same rule as the owner cookie: without the COOKIE_SECURE=0 opt-out
-    // a plain-HTTP deployment's browser drops it and the gate never opens.
-    secure: cookiesAreSecure(),
+    // A `Secure` cookie is dropped by the browser on a plain-http origin, which
+    // left the code accepted but the session never established.
+    secure: requestIsSecure(request),
   });
 
   return apiSuccess({ valid: true });
