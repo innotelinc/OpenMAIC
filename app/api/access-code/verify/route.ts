@@ -17,6 +17,16 @@ function readCandidateCode(body: unknown): string | null {
   return typeof candidate === 'string' && candidate.length > 0 ? candidate : null;
 }
 
+/**
+ * Whether this request arrived over TLS. Behind the edge proxy the app sees
+ * plain http, so `x-forwarded-proto` is what says otherwise.
+ */
+function requestIsSecure(request: Request): boolean {
+  const forwarded = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();
+  if (forwarded) return forwarded === 'https';
+  return new URL(request.url).protocol === 'https:';
+}
+
 export async function POST(request: Request) {
   const accessCode = process.env.ACCESS_CODE;
   if (!accessCode) {
@@ -73,7 +83,9 @@ export async function POST(request: Request) {
     sameSite: 'lax',
     path: '/',
     maxAge: ACCESS_TOKEN_MAX_AGE_SECONDS,
-    secure: process.env.NODE_ENV === 'production',
+    // A `Secure` cookie is dropped by the browser on a plain-http origin, which
+    // left the code accepted but the session never established.
+    secure: requestIsSecure(request),
   });
 
   return apiSuccess({ valid: true });
