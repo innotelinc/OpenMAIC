@@ -40,6 +40,18 @@
   <a href="https://open.maic.chat/">Live Demo</a> · <a href="#-quick-start">Quick Start</a> · <a href="#lemonade-local-ai">Lemonade</a> · <a href="#funasr-local-asr">FunASR</a> · <a href="#-features">Features</a> · <a href="#-use-cases">Use Cases</a> · <a href="#-agent-workbench-integration">OpenClaw</a>
 </p>
 
+## Why OpenMAIC
+
+| Problem | Answer |
+| --- | --- |
+| A generated lesson is a wall of text. | Agents teach, quiz and run the simulation, so the learner works through it. |
+| Authoring a classroom by hand does not scale. | A course specification generates the classroom and its checks. |
+| Progress lives in the classroom. | Completion is handed to the record of record rather than kept as a second one. |
+
+Its place in the stack is [docs/stack.md](docs/stack.md); the canonical
+definition of the shared layers is the
+[Innotel Platform Stack](https://github.com/innotelinc/innotel-platform-stack).
+
 ## 🗞️ News
 
 - **2026-10-16** — [v1.2.0](https://github.com/THU-MAIC/OpenMAIC/releases/tag/v1.2.0): **server-first is stable.** Generation runs on the server and survives closed tabs and restarts, models are configured once in `openmaic.yml` (defaults, locks, and an option to forbid user keys), materials are parsed as soon as they are attached, and the web app and the API share one pipeline. New: [classroom export](packages/docs/content/docs/getting-started.mdx#export-a-classroom), as a PPTX that keeps every scene or as one offline HTML file that plays the lesson. It needs PostgreSQL and a long-running server; Vercel deployments stay on [1.1.x](#vercel-deployment-up-to-11x). Read [Upgrading from 1.1.x](packages/docs/content/docs/deployment.mdx#upgrading-from-11x) before upgrading.
@@ -232,6 +244,10 @@ configuration and for upgrading from 1.1.x.
 ```bash
 cp .env.example .env.local
 # Edit .env.local with your API keys, then:
+
+[![CI](https://github.com/innotelinc/OpenMAIC/actions/workflows/ci.yml/badge.svg)](https://github.com/innotelinc/OpenMAIC/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 docker compose up --build
 ```
 
@@ -1040,3 +1056,8 @@ The repository bundles workspace packages that are **not** covered by the root M
 - `packages/pptxgenjs` — [MIT](packages/pptxgenjs/package.json) (third-party)
 
 When redistributing the repository as a whole, the terms of each bundled package above apply to that package's files.
+
+## License
+
+MIT — see [LICENSE](LICENSE). Copyright © 2026 Innotel Inc. and the
+upstream authors. Upstream material remains under its own licence.
