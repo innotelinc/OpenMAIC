@@ -56,7 +56,10 @@ export function parseReference(value) {
   const slash = location.indexOf('/');
   if (slash === -1) return null;
   const mount = location.slice(0, slash).trim();
-  const path = location.slice(slash + 1).replace(/^\/+|\/+$/g, '').trim();
+  const path = location
+    .slice(slash + 1)
+    .replace(/^\/+|\/+$/g, '')
+    .trim();
   if (!mount || !path || !key) return null;
   return { mount, path, key };
 }
@@ -125,7 +128,9 @@ function readSecret(cfg, { mount, path }, cache) {
         resolve(outer.data);
       });
     });
-    request.on('timeout', () => request.destroy(new Error(`vault: timed out after ${TIMEOUT_MS}ms`)));
+    request.on('timeout', () =>
+      request.destroy(new Error(`vault: timed out after ${TIMEOUT_MS}ms`)),
+    );
     request.on('error', reject);
     request.end();
   });
@@ -177,7 +182,9 @@ async function main(argv = process.argv.slice(2)) {
     const value = secret[parsed.key];
     if (value === undefined) {
       throw new Error(
-        `vault: ${parsed.mount}/${parsed.path} has no key ${parsed.key} (present: ${Object.keys(secret)
+        `vault: ${parsed.mount}/${parsed.path} has no key ${parsed.key} (present: ${Object.keys(
+          secret,
+        )
           .sort()
           .join(', ')})`,
       );
@@ -199,7 +206,9 @@ async function main(argv = process.argv.slice(2)) {
 
   if (resolved.size) {
     console.error(
-      `[vault] resolved ${resolved.size} secret(s) from ${cfg.store} into ${output}: ${[...resolved.keys()]
+      `[vault] resolved ${resolved.size} secret(s) from ${cfg.store} into ${output}: ${[
+        ...resolved.keys(),
+      ]
         .sort()
         .join(', ')}`,
     );

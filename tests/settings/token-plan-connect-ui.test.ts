@@ -161,9 +161,7 @@ describe('Token Plan → connecting applies the plan’s recommended configurati
     // Slot names as the course model map shows them (the id here: the test's
     // translations return keys), then current → recommended.
     expect(rows[0]).toMatch(/^llmDeepSeek V4 Pro · ds → auto\/best-chat · OmniRoute$/);
-    expect(rows[1]).toMatch(
-      /^course\.content\.slide.* → auto\/best-coding · OmniRoute$/,
-    );
+    expect(rows[1]).toMatch(/^course\.content\.slide.* → auto\/best-coding · OmniRoute$/);
   });
 
   it("“Use plan's recommended setup” overwrites the workspace's picks in one change", async () => {

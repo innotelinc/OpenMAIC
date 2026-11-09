@@ -116,7 +116,8 @@ describe('parseModelConfig', () => {
     expect(issuesOf('slots:\n  llm: ghost:model\n')).toEqual([
       'slots.llm: provider "ghost" is not declared under providers',
     ]);
-    const kimi = 'providers:\n  kimi:\n    preset: kimi\n    apiKey: k\nslots:\n  tts: kimi:voice\n';
+    const kimi =
+      'providers:\n  kimi:\n    preset: kimi\n    apiKey: k\nslots:\n  tts: kimi:voice\n';
     expect(issuesOf(kimi)).toEqual([
       'slots.tts: provider "kimi" (preset "kimi") does not offer tts',
     ]);

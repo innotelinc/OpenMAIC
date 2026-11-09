@@ -69,9 +69,7 @@ describe('provider presets', () => {
     // The deployment ships one plan: OmniRoute, the estate's gateway.
     const omniroute = getProviderPreset('omniroute')!;
     expect(omniroute.kind).toBe('token-plan');
-    expect(Object.keys(omniroute.capabilities).sort()).toEqual(
-      ['chat', 'image', 'video'].sort(),
-    );
+    expect(Object.keys(omniroute.capabilities).sort()).toEqual(['chat', 'image', 'video'].sort());
     // The retired vendor plans leave their chat registries as ordinary
     // single-capability presets, not token plans.
     expect(getProviderPreset('minimax')?.kind).toBe('single');

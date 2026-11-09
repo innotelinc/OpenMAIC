@@ -654,7 +654,9 @@ it('imports an enrolled plan without inventing a fetch assignment it does not ad
     tokenPlanEnrollments: { omniroute: 'openai' },
     webSearchEnabled: true,
     webSearchProviderId: 'brave',
-    webSearchProvidersConfig: { brave: { apiKey: '', baseUrl: 'https://search.brave.com', enabled: true } },
+    webSearchProvidersConfig: {
+      brave: { apiKey: '', baseUrl: 'https://search.brave.com', enabled: true },
+    },
   });
   expect(proposal?.providers?.omniroute).toMatchObject({
     preset: 'omniroute',

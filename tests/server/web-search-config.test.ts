@@ -52,9 +52,9 @@ describe('server web search config', () => {
     // no adapter for, so the shipped plan declares none — and no URL is trusted
     // on its behalf.
     expect(targets).toEqual([]);
-    expect(() =>
-      resolveSafeClientWebSearchBaseUrl('bocha', 'https://gateway.example/v1'),
-    ).toThrow('Unsupported Bocha base URL');
+    expect(() => resolveSafeClientWebSearchBaseUrl('bocha', 'https://gateway.example/v1')).toThrow(
+      'Unsupported Bocha base URL',
+    );
   });
 
   it('allows official Exa client base URLs and resolves client credentials', async () => {
