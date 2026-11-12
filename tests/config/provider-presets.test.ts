@@ -70,7 +70,9 @@ describe('provider presets', () => {
     // The deployment ships one plan: OmniRoute, the estate's gateway.
     const omniroute = getProviderPreset('omniroute')!;
     expect(omniroute.kind).toBe('token-plan');
-    expect(Object.keys(omniroute.capabilities).sort()).toEqual(['chat', 'image', 'video'].sort());
+    expect(Object.keys(omniroute.capabilities).sort()).toEqual(
+      ['chat', 'image', 'tts', 'video'].sort(),
+    );
     // The retired vendor plans leave their chat registries as ordinary
     // single-capability presets, not token plans.
     expect(getProviderPreset('minimax')?.kind).toBe('single');
@@ -115,9 +117,9 @@ describe('provider presets', () => {
       image: 'codex/gpt-5.6-luna-image',
       video: 'veoaifree-web/seedance',
     });
-    // Speech is not recommended: the gateway holds no speech credentials, so a
-    // tts assignment here would be a slot that errors on every call.
-    expect(omniroute.recommended).not.toHaveProperty('tts');
+    // Speech goes through the gateway's keyless gTTS route, so the plan
+    // recommends it as well (see the preset's tts block).
+    expect(omniroute.recommended).toHaveProperty('tts', 'gtts/default');
     for (const preset of PROVIDER_PRESETS) {
       for (const [slot, model] of Object.entries(preset.recommended ?? {})) {
         expect(isSlotId(slot), `${preset.id} → ${slot}`).toBe(true);
@@ -126,24 +128,6 @@ describe('provider presets', () => {
         if (models) expect(models, `${preset.id} → ${slot}`).toContain(model);
       }
     }
-  });
-
-  it('offers Ark migration targets with thinking metadata at the plan endpoint', () => {
-    const preset = getProviderPreset('volcengine-ark')!;
-    expect(preset.capabilities.chat?.baseUrl).toBe('https://ark.cn-beijing.volces.com/api/plan/v3');
-    const models = presetModels(preset, 'chat');
-    for (const id of ['doubao-seed-2.1-lite', 'glm-5.3', 'kimi-k3', 'kimi-k2.8-preview']) {
-      const model = models.find((entry) => entry.id === id);
-      expect(model, id).toBeDefined();
-      expect(model?.capabilities?.thinking?.defaultMode, id).toBe('enabled');
-    }
-    for (const id of ['glm-5.3', 'kimi-k3', 'kimi-k2.8-preview']) {
-      expect(models.find((entry) => entry.id === id)?.capabilities?.thinking?.toggleable, id).toBe(
-        false,
-      );
-    }
-    expect(preset.capabilities.chat?.models).not.toContain('glm-5.2');
-    expect(preset.recommended?.llm).toBe('doubao-seed-2.1-pro');
   });
 });
 
@@ -169,37 +153,4 @@ it('shares one DeepSeek account across chat, search and fetch without recommendi
     webFetch: { registryId: 'deepseek', baseUrl: undefined },
   });
   expect(getProviderPreset('deepseek')?.recommended).toBeUndefined();
-});
-
-it('turns the DeepSeek plan into its own preset beside the personal DeepSeek account', () => {
-  expect(getProviderPreset('deepseek')?.kind).toBe('single');
-  const preset = getProviderPreset('deepseek-token-plan')!;
-  expect(preset.kind).toBe('token-plan');
-  expect(preset.capabilities).toEqual({
-    chat: {
-      registryId: 'deepseek',
-      baseUrl: 'https://api.deepseek.com/v1',
-      models: ['deepseek-flash', 'deepseek-v4-pro'],
-      defaultModel: 'deepseek-flash',
-    },
-    webSearch: { registryId: 'deepseek', baseUrl: 'https://api.deepseek.com/v1' },
-    webFetch: { registryId: 'deepseek', baseUrl: 'https://api.deepseek.com/v1' },
-  });
-  expect(preset.recommended).toEqual({
-    llm: 'deepseek-flash',
-    webSearch: 'deepseek',
-    webFetch: 'deepseek',
-  });
-  expect(TOKEN_PLAN_PRESETS.at(-1)?.id).toBe('deepseek');
-});
-
-it('seeds the DeepSeek plan models with the registry metadata', () => {
-  const models = presetModels(getProviderPreset('deepseek-token-plan')!, 'chat');
-  expect(models.map((model) => model.id)).toEqual(['deepseek-flash', 'deepseek-v4-pro']);
-  const flash = models[0];
-  expect(flash.name).toBe('DeepSeek Flash');
-  expect(flash.contextWindow).toBe(1048576);
-  expect(flash.capabilities).toMatchObject({ tools: true, vision: true });
-  expect(flash.capabilities?.thinking?.toggleable).toBe(true);
-  expect(models[1].capabilities).toMatchObject({ tools: true, vision: false });
 });

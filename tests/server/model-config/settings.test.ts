@@ -715,13 +715,14 @@ describe('applyModelSettingsChange', () => {
     const recommendation = tokenPlanRecommendation(view, preset, provider);
     const planLlm = `omniroute:${preset.recommended.llm}`;
     // The locked video is not part of it; llm, a server default, is. The plan
-    // declares no speech, search or fetch, so those slots are never touched.
+    // declares speech through the gateway's gTTS route and no search or fetch.
     expect(recommendation).toEqual({
       llm: planLlm,
       'course.content.slide': 'omniroute:auto/best-coding',
       'course.content.interactive': 'omniroute:auto/best-coding',
       agent: 'omniroute:auto/best-chat',
       image: 'omniroute:codex/gpt-5.6-luna-image',
+      tts: 'omniroute:gtts/default',
     });
     // The server's default on llm is a current choice too: the user is asked about it.
     expect(tokenPlanConflicts(view, recommendation).map((c) => [c.slot.slot, c.from])).toEqual([
@@ -741,6 +742,7 @@ describe('applyModelSettingsChange', () => {
       },
       agent: 'omniroute:auto/best-chat',
       image: 'omniroute:codex/gpt-5.6-luna-image',
+      tts: 'omniroute:gtts/default',
     });
     const filled = await applyModelSettingsChange(config, { kind: 'slots', set });
     const after = modelSettingsView({ config: filled, revision: 4, unreadableSecrets: [] });
@@ -766,6 +768,7 @@ describe('applyModelSettingsChange', () => {
     expect(tokenPlanAssignments(view, recommendation, 'keep')).toEqual({
       agent: 'omniroute:auto/best-chat',
       image: 'omniroute:codex/gpt-5.6-luna-image',
+      tts: 'omniroute:gtts/default',
     });
 
     // Disconnecting frees the slots that named the plan: they follow their

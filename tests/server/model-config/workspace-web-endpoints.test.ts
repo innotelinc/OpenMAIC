@@ -27,13 +27,10 @@ describe.each(['webSearch', 'webFetch'] as const)('%s workspace endpoints', (slo
   describe.each([
     ['deepseek', 'https://api.deepseek.com'],
     ['deepseek', 'https://api.deepseek.com/v1'],
-    ['deepseek-token-plan', 'https://api.deepseek.com'],
-    ['deepseek-token-plan', 'https://api.deepseek.com/v1'],
     ['kimi', 'https://api.moonshot.cn/v1'],
     ['kimi', 'https://api.moonshot.ai/v1'],
     ['kimi', 'https://api.kimi.com/coding/v1'],
     ['kimi', 'https://api.kimi.ai/coding/v1'],
-    ['kimi-coding-plan', 'https://api.moonshot.cn/v1'],
   ])('%s at %s', (preset, officialBaseUrl) => {
     it.each(['', '/', '///'])('resolves the official endpoint with suffix "%s"', async (suffix) => {
       const baseUrl = officialBaseUrl + suffix;
@@ -66,31 +63,31 @@ describe.each(['webSearch', 'webFetch'] as const)('%s workspace endpoints', (slo
     );
   });
 
-  describe.each(['deepseek', 'deepseek-token-plan', 'kimi', 'kimi-coding-plan'])(
-    '%s custom endpoints',
-    (preset) => {
-      it.each([
-        'https://gateway.example/v1',
-        'https://api.deepseek.com.evil.example/v1',
-        'https://api.moonshot.cn.evil.example/v1',
-        'https://api.deepseek.com/v1/custom',
-        'https://api.moonshot.cn/v1/custom',
-      ])('refuses resolution and saving at %s', async (baseUrl) => {
-        const config = workspace(preset, baseUrl);
-        config.slots = { [slot]: 'account' };
-        await expect(resolveMediaSlot(slot, { workspaceId: 'user:alice' })).rejects.toBeInstanceOf(
-          WorkspaceEndpointError,
-        );
-        await expect(
-          applyModelSettingsChange(config, { kind: 'slots', set: { [slot]: 'account' } }),
-        ).rejects.toMatchObject({ code: 'INVALID_ASSIGNMENT' });
-        const account = modelSettingsView({
-          config,
-          revision: 1,
-          unreadableSecrets: [],
-        }).providers.find((provider) => provider.id === 'account');
-        expect(account?.capabilities).not.toHaveProperty(slot);
-      });
-    },
-  );
+  // This deployment ships no vendor token plans (see provider-presets.test.ts:
+  // the gateway's OmniRoute plan is the only one), so the cases below cover the
+  // presets it does ship.
+  describe.each(['deepseek', 'kimi'])('%s custom endpoints', (preset) => {
+    it.each([
+      'https://gateway.example/v1',
+      'https://api.deepseek.com.evil.example/v1',
+      'https://api.moonshot.cn.evil.example/v1',
+      'https://api.deepseek.com/v1/custom',
+      'https://api.moonshot.cn/v1/custom',
+    ])('refuses resolution and saving at %s', async (baseUrl) => {
+      const config = workspace(preset, baseUrl);
+      config.slots = { [slot]: 'account' };
+      await expect(resolveMediaSlot(slot, { workspaceId: 'user:alice' })).rejects.toBeInstanceOf(
+        WorkspaceEndpointError,
+      );
+      await expect(
+        applyModelSettingsChange(config, { kind: 'slots', set: { [slot]: 'account' } }),
+      ).rejects.toMatchObject({ code: 'INVALID_ASSIGNMENT' });
+      const account = modelSettingsView({
+        config,
+        revision: 1,
+        unreadableSecrets: [],
+      }).providers.find((provider) => provider.id === 'account');
+      expect(account?.capabilities).not.toHaveProperty(slot);
+    });
+  });
 });

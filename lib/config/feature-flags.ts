@@ -69,6 +69,9 @@ export function isWorkbenchEnabled(): boolean {
  * standalone flag remains for deployments that want the classroom editor
  * without the workbench.
  */
+/** The previous name of {@link isWorkbenchEnabled}, still imported by the home page. */
+export const isProWorkbenchEnabled = isWorkbenchEnabled;
+
 export function isMaicEditorEnabled(): boolean {
   return isWorkbenchEnabled() || readBoolean(process.env.NEXT_PUBLIC_MAIC_EDITOR_ENABLED);
 }
