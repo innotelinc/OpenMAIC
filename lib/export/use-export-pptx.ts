@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
-import pptxgen from 'pptxgenjs';
+import type pptxgen from 'pptxgenjs';
+import { validateShapeGeometry, RENDER_PATH_LIMITS, shapeToTextFallback } from '@openmaic/geometry';
 import tinycolor from 'tinycolor2';
 import { saveAs } from 'file-saver';
 import { toast } from 'sonner';
@@ -23,7 +24,6 @@ import { getElementRange, getLineElementPath, getTableSubThemeColor } from '@/li
 import { type AST, toAST } from '@/lib/export/html-parser';
 import { type SvgPoints, toPoints, getSvgPathRange } from '@/lib/export/svg-path-parser';
 import { svg2Base64 } from '@/lib/export/svg2base64';
-import { latexToOmml } from '@/lib/export/latex-to-omml';
 import { inlineMathSource, proseToPlainText } from '@/lib/export/pptx-rich-text';
 import { createLogger } from '@/lib/logger';
 import { collectSpeechText } from './narration';
@@ -519,6 +519,20 @@ export function assertPptxMediaReferenceParity(
   }
 }
 
+/**
+ * A QR code cannot hold an arbitrarily long url — `uqr` rejects anything past
+ * its byte capacity. The code is a convenience; the hyperlink is the content,
+ * so a failed encode drops the image instead of aborting the whole export.
+ */
+async function qrDataUrlFor(url: string): Promise<string | undefined> {
+  try {
+    return await qrPngDataUrl(url);
+  } catch (err) {
+    log.warn(`Skipping QR code for a ${url.length}-char url:`, err);
+    return undefined;
+  }
+}
+
 // Exported for the round-trip integration test harness — the test wires its
 // own slides + ratios in and inspects the resulting PPTX bytes via JSZip.
 // The hook below is still the only intended runtime caller.
@@ -536,7 +550,13 @@ export async function buildPptxBlob(
   stageId?: string,
   deck: readonly PptxDeckEntry[] = slidesOnlyDeck(slides.length),
 ): Promise<Blob> {
-  const pptx = new pptxgen();
+  // Loaded here, not at the top of the module: this hook sits in the header of
+  // every classroom, and these libraries are only ever needed to export one.
+  const [{ default: PptxGen }, { latexToOmml }] = await Promise.all([
+    import('pptxgenjs'),
+    import('@/lib/export/latex-to-omml'),
+  ]);
+  const pptx = new PptxGen();
   const documentElements = slides.flatMap((slide) => slide.elements);
   const manifestRefs = derivePptxMediaReferenceSet(slides);
   assertPptxMediaReferenceParity(slides, manifestRefs);
@@ -578,7 +598,7 @@ export async function buildPptxBlob(
         placeholderStyle,
         { viewportSize, viewportRatio },
         { ratioPx2Inch, ratioPx2Pt },
-        onlineUrl ? await qrPngDataUrl(onlineUrl) : undefined,
+        onlineUrl ? await qrDataUrlFor(onlineUrl) : undefined,
       );
       continue;
     }
@@ -635,7 +655,15 @@ export async function buildPptxBlob(
     if (!slide.elements) continue;
 
     // ── Elements ──
-    for (const el of slide.elements) {
+    for (const sourceElement of slide.elements) {
+      // Export the same bounded text projection that playback uses, including
+      // historical shapes whose geometry cannot be parsed or scaled safely.
+      const el =
+        sourceElement.type === 'shape' &&
+        !validateShapeGeometry(sourceElement, RENDER_PATH_LIMITS).ok
+          ? shapeToTextFallback(sourceElement)
+          : sourceElement;
+      if (!el) continue;
       // ── TEXT ──
       if (el.type === 'text') {
         const textProps = formatHTML(el.content, ratioPx2Pt);
@@ -647,7 +675,7 @@ export async function buildPptxBlob(
           fontSize: DEFAULT_FONT_SIZE / ratioPx2Pt,
           fontFace: el.defaultFontName || DEFAULT_FONT_FAMILY,
           color: '#000000',
-          valign: 'top',
+          valign: el.vAlign ?? 'top',
           margin: 10 / ratioPx2Pt,
           paraSpaceBefore: 5 / ratioPx2Pt,
           lineSpacingMultiple: 1.5 / 1.25,
@@ -672,8 +700,25 @@ export async function buildPptxBlob(
         if (el.paragraphSpace !== undefined)
           options.paraSpaceBefore = el.paragraphSpace / ratioPx2Pt;
         if (el.vertical) options.vert = 'eaVert';
-
         pptxSlide.addText(textProps, options);
+        if (el.link) {
+          const hyperlink = getLinkOption(el.link, slideNumbers);
+          if (hyperlink) {
+            // PptxGenJS does not create a relationship for hyperlinks on a
+            // rich-text box's options (it emits rIdundefined). A transparent
+            // shape above the label also makes the whole element clickable.
+            pptxSlide.addShape('rect' as pptxgen.ShapeType, {
+              x: options.x,
+              y: options.y,
+              w: options.w,
+              h: options.h,
+              rotate: options.rotate,
+              fill: { color: '#ffffff', transparency: 100 },
+              line: { color: '#ffffff', transparency: 100 },
+              hyperlink,
+            });
+          }
+        }
       }
 
       // ── IMAGE ──

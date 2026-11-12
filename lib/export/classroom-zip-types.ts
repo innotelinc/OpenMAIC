@@ -13,6 +13,8 @@ export const CLASSROOM_ZIP_EXTENSION = '.maic.zip';
 
 export interface ClassroomManifest {
   formatVersion: number;
+  requiredCapabilities?: string[];
+  pblProjects?: import('@openmaic/dsl').PBLProjectPackageEntry[];
   exportedAt: string;
   appVersion: string;
   stage: ManifestStage;
@@ -81,11 +83,16 @@ function sanitizeManifestVoiceConfig(value: unknown): AgentVoiceConfig | undefin
 /** Same contract as {@link sanitizeManifestVoiceConfig}, for the 3-layer descriptor. */
 function sanitizeManifestVoiceDesign(value: unknown): VoiceDesign | undefined {
   if (!value || typeof value !== 'object') return undefined;
-  const { identity, texture, delivery } = value as Record<string, unknown>;
+  const { identity, texture, delivery, gender } = value as Record<string, unknown>;
   if (typeof identity !== 'string' || typeof texture !== 'string' || typeof delivery !== 'string') {
     return undefined;
   }
-  return { identity, texture, delivery };
+  return {
+    identity,
+    texture,
+    delivery,
+    ...(gender === 'male' || gender === 'female' ? { gender } : {}),
+  };
 }
 
 /**

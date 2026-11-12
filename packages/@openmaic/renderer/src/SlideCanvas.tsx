@@ -23,6 +23,7 @@ import { SpotlightOverlay } from './effects/SpotlightOverlay';
 import { LaserOverlay } from './effects/LaserOverlay';
 import { useOptionalSlideContext } from './context';
 import { SLIDE_RENDERER_STYLES } from './styles';
+import { InlineMathPriorityContext } from './utils/inlineMath';
 
 export interface SlideCanvasProps {
   /**
@@ -60,6 +61,11 @@ export interface SlideCanvasProps {
   renderTable?: (element: PPTTableElement, defaultContent: ReactNode) => ReactNode;
   /** Enable pointer interaction for video controls or custom video UI. */
   videoInteractive?: boolean;
+  /**
+   * Background canvases use the frame allowance left by foreground layout
+   * effects, then finish in idle time at lower priority. Defaults to normal.
+   */
+  mathPriority?: 'normal' | 'background';
   /** Click handler invoked on any element. */
   onElementClick?: (element: PPTElement, event: React.MouseEvent) => void;
   /**
@@ -213,23 +219,25 @@ export function SlideCanvas(props: SlideCanvasProps) {
             transform: `scale(${canvasScale})`,
           }}
         >
-          {visibleElements.map((element) => (
-            <SlideElement
-              key={element.id}
-              elementInfo={element}
-              elementIndex={elementIndexById.get(element.id) ?? 1}
-              theme={slide.theme}
-              renderImage={renderImage}
-              renderVideo={renderVideo}
-              renderText={renderText}
-              renderShapeLabel={renderShapeLabel}
-              renderTable={renderTable}
-              videoInteractive={videoInteractive}
-              onElementClick={onElementClick}
-              idPrefix={elementIdPrefix}
-              dragOffset={dragOffsets?.get(element.id)}
-            />
-          ))}
+          <InlineMathPriorityContext.Provider value={props.mathPriority ?? 'normal'}>
+            {visibleElements.map((element) => (
+              <SlideElement
+                key={element.id}
+                elementInfo={element}
+                elementIndex={elementIndexById.get(element.id) ?? 1}
+                theme={slide.theme}
+                renderImage={renderImage}
+                renderVideo={renderVideo}
+                renderText={renderText}
+                renderShapeLabel={renderShapeLabel}
+                renderTable={renderTable}
+                videoInteractive={videoInteractive}
+                onElementClick={onElementClick}
+                idPrefix={elementIdPrefix}
+                dragOffset={dragOffsets?.get(element.id)}
+              />
+            ))}
+          </InlineMathPriorityContext.Provider>
 
           {highlights.map((highlight) => {
             const element = visibleElements.find((el) => el.id === highlight.elementId);
@@ -245,26 +253,18 @@ export function SlideCanvas(props: SlideCanvasProps) {
           measurementKey={visibleElements}
         />
 
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            padding: '5%',
-          }}
-        >
-          <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-            <AnimatePresence>
-              {effects?.laser && laserGeometry && (
-                <LaserOverlay
-                  key={`laser-${effects.laser.elementId}`}
-                  geometry={laserGeometry}
-                  color={effects.laser.color}
-                  duration={effects.laser.duration}
-                />
-              )}
-            </AnimatePresence>
-          </div>
+        {/* Laser coords are percentages of the full slide frame, like zoom. */}
+        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+          <AnimatePresence>
+            {effects?.laser && laserGeometry && (
+              <LaserOverlay
+                key={`laser-${effects.laser.elementId}`}
+                geometry={laserGeometry}
+                color={effects.laser.color}
+                duration={effects.laser.duration}
+              />
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </div>

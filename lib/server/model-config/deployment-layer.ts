@@ -17,12 +17,21 @@ import {
 import { WEB_SEARCH_PROVIDERS } from '@/lib/web-search/constants';
 import type { ModelConfigFile } from './openmaic-yml';
 import { translateLegacyConfig } from '@/lib/server/model-config/legacy-config';
+import {
+  sandboxConfigurationSchema,
+  legacySandboxConfiguration,
+} from '@/lib/sandbox/config-schema';
+import { ModelConfigError } from './openmaic-yml';
 import { loadModelConfigFile } from '@/lib/server/model-config/openmaic-yml';
-import { presetIdFor } from '@/lib/config/preset-ids';
+import { presetIdFor, RETIRED_PRESETS, retiredPresetReason } from '@/lib/config/preset-ids';
 import { usesServerCredentials, selectsUpstreamModel } from './model-authorization';
 import { getProviderPreset } from '@/lib/config/provider-presets';
 import type { SlotCapability } from '@/lib/config/model-slots';
-import type { ModelConfigLayer } from '@/lib/server/model-config/resolve-slot';
+import {
+  retiredProviderIds,
+  withoutAssignmentsNaming,
+  type ModelConfigLayer,
+} from '@/lib/server/model-config/resolve-slot';
 
 export interface DeploymentLayer {
   /** Providers, server defaults and locks: openmaic.yml, or the legacy configuration. */
@@ -83,19 +92,55 @@ function ignoredSearchOptInNotices(file: ModelConfigFile): string[] {
     );
 }
 
+/** Legacy variables of a retired preset that are still set: they no longer configure anything. */
+function retiredVariableNotices(): string[] {
+  return Object.values(RETIRED_PRESETS).flatMap(({ reason, envPrefix }) =>
+    envPrefix &&
+    ['API_KEY', 'BASE_URL', 'MODELS'].some((s) => process.env[`${envPrefix}_${s}`]?.trim())
+      ? [`${envPrefix}_* is set but no longer used: ${reason}`]
+      : [],
+  );
+}
+
+/**
+ * The file without the slot assignments that name a provider whose preset
+ * this build retired (those slots follow their parents again), with a notice
+ * for each such provider. The provider itself stays declared and resolves
+ * nothing, so the file keeps loading.
+ */
+function withoutRetiredAssignments(file: ModelConfigFile): {
+  config: ModelConfigFile;
+  notices: string[];
+} {
+  const retired = retiredProviderIds([{ source: 'deployment', config: file }]);
+  if (!retired.size) return { config: file, notices: [] };
+  return {
+    config: { ...file, slots: withoutAssignmentsNaming(file.slots, retired) } as ModelConfigFile,
+    notices: [...retired].map(
+      (id) =>
+        `providers.${id} is not used: ${retiredPresetReason(file.providers![id].preset)}. Slots that named it follow their parents again; remove it from openmaic.yml and assign another provider`,
+    ),
+  };
+}
+
 /**
  * Reads the process environment and working directory, like the legacy
  * loaders it translates (which cache what they read). Throws
  * LegacyRoutesError for MODEL_ROUTES without openmaic.yml.
  */
 export function loadDeploymentLayer(): DeploymentLayer {
-  const file = loadModelConfigFile();
-  const legacy = hasLegacyConfiguration();
-  if (file) {
+  const loaded = loadModelConfigFile();
+  const legacySandbox = legacySandboxConfiguration(process.env);
+  const legacy = hasLegacyConfiguration() || !!legacySandbox;
+  if (loaded) {
+    const { config: file, notices: retiredNotices } = withoutRetiredAssignments(loaded);
+    validateSandboxSdkEnvironment(file.sandbox?.enabled);
     return {
       layer: { source: 'deployment', config: file },
       legacy: false,
       notices: [
+        ...retiredNotices,
+        ...retiredVariableNotices(),
         ...ignoredSearchOptInNotices(file),
         ...(legacy
           ? [
@@ -118,18 +163,30 @@ export function loadDeploymentLayer(): DeploymentLayer {
       ],
     };
   }
-  if (!legacy) return { layer: null, legacy: false, notices: [] };
+  if (!legacy) return { layer: null, legacy: false, notices: retiredVariableNotices() };
   if (process.env.MODEL_ROUTES?.trim()) throw new LegacyRoutesError();
   const { config, notices } = translateLegacyConfig(getServerProviderConfig(), {
     defaultModel: process.env.DEFAULT_MODEL?.trim() || undefined,
     globalFallback: process.env.MODEL_FALLBACK?.trim() || undefined,
     defaultImageProvider: process.env.DEFAULT_IMAGE_PROVIDER?.trim() || undefined,
   });
+  if (legacySandbox) {
+    const parsed = sandboxConfigurationSchema.safeParse(legacySandbox);
+    if (!parsed.success)
+      throw new ModelConfigError(
+        'legacy environment',
+        parsed.error.issues.map((issue) => `sandbox.${issue.path.join('.')}: ${issue.message}`),
+      );
+    config.sandbox = parsed.data;
+    validateSandboxSdkEnvironment(config.sandbox.enabled);
+  }
   return {
-    layer: config.providers || config.slots ? { source: 'deployment', config } : null,
+    layer:
+      config.providers || config.slots || config.sandbox ? { source: 'deployment', config } : null,
     legacy: true,
     notices: [
       'The model configuration comes from the legacy provider variables, server-providers.yml, DEFAULT_MODEL and MODEL_FALLBACK, which are deprecated; move it to openmaic.yml',
+      ...retiredVariableNotices(),
       ...notices,
       ...Object.entries(getServerProviderConfig()).flatMap(([section, entries]) =>
         section === 'disabled' || section === 'pdf'
@@ -153,4 +210,14 @@ export function loadDeploymentLayer(): DeploymentLayer {
       ),
     ],
   };
+}
+
+function validateSandboxSdkEnvironment(enabled?: boolean) {
+  if (!enabled) return;
+  for (const name of ['E2B_SANDBOX_URL', 'E2B_ACCESS_TOKEN']) {
+    if (process.env[name])
+      throw new ModelConfigError('environment', [
+        `${name}: unset this SDK override; configure sandbox.apiUrl and sandbox.domain instead`,
+      ]);
+  }
 }
