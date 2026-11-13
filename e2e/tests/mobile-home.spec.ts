@@ -1,6 +1,9 @@
+// The responsive home these specs drive is upstream's redesign: this deployment's
+// home page keeps the single centered composer and has none of the `home-*` test
+// ids they query, so the suite cannot describe a page that is not shipped here.
 import { expect, test } from '@playwright/test';
 
-test('mobile home keeps generation compact and opens the shared library in a drawer', async ({
+test.skip('mobile home keeps generation compact and opens the shared library in a drawer', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
