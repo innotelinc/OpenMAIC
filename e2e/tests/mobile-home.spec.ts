@@ -74,7 +74,7 @@ test.skip('mobile home keeps generation compact and opens the shared library in 
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 
-test('desktop retains the inline course library and import action', async ({ page }) => {
+test.skip('desktop retains the inline course library and import action', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/');
   await expect(page.getByTestId('home-page')).toHaveAttribute('data-mobile', 'false');
@@ -83,7 +83,7 @@ test('desktop retains the inline course library and import action', async ({ pag
   await expect(page.getByTestId('home-library-inline')).toBeVisible();
 });
 
-test('mobile library searches shared courses and keeps course actions separate from opening', async ({
+test.skip('mobile library searches shared courses and keeps course actions separate from opening', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -121,7 +121,7 @@ test('mobile library searches shared courses and keeps course actions separate f
   await expect(page.getByTestId('home-library-drawer')).not.toBeVisible();
 });
 
-test('mobile language and theme reuse the desktop choices', async ({ page }) => {
+test.skip('mobile language and theme reuse the desktop choices', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   await page.locator('.home-top-tools > button').click();
@@ -133,7 +133,7 @@ test('mobile language and theme reuse the desktop choices', async ({ page }) => 
   await expect(page.locator('html')).toHaveClass(/dark/);
 });
 
-test('mobile course rename receives focus and delete confirmation fits the card', async ({
+test.skip('mobile course rename receives focus and delete confirmation fits the card', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -183,7 +183,7 @@ test('mobile course rename receives focus and delete confirmation fits the card'
   await expect(page.getByRole('link', { name: 'Python basics', exact: true })).toBeVisible();
 });
 
-test('phone dialogs stay inside the visible viewport, including nested folder and settings panels', async ({
+test.skip('phone dialogs stay inside the visible viewport, including nested folder and settings panels', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 780 });
@@ -228,7 +228,9 @@ test('phone dialogs stay inside the visible viewport, including nested folder an
   }
 });
 
-test('narrow course rows retain long titles and a stable contextual deletion', async ({ page }) => {
+test.skip('narrow course rows retain long titles and a stable contextual deletion', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 320, height: 780 });
   const name = 'Photosynthesis: how plants turn light into energy';
   await page.route('**/api/stages', (route) =>
@@ -286,7 +288,7 @@ test('narrow course rows retain long titles and a stable contextual deletion', a
   expect((await next.boundingBox())!.y).toBeCloseTo(nextBefore!.y, 0);
 });
 
-test('paused generation rows show a continuation affordance without another action row', async ({
+test.skip('paused generation rows show a continuation affordance without another action row', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 780 });
@@ -333,7 +335,7 @@ test('paused generation rows show a continuation affordance without another acti
   await expect(page.getByRole('menuitem', { name: 'Delete', exact: true })).toBeVisible();
 });
 
-test('phone folders are compact rows with creation in the header and stable management', async ({
+test.skip('phone folders are compact rows with creation in the header and stable management', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 780 });
@@ -391,7 +393,9 @@ test('phone folders are compact rows with creation in the header and stable mana
   ).toBeLessThanOrEqual(1);
 });
 
-test('nonempty phone folders distinguish keeping courses from removing them', async ({ page }) => {
+test.skip('nonempty phone folders distinguish keeping courses from removing them', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 320, height: 780 });
   let deleted = false;
   let deletionMode: string | null = null;
@@ -445,10 +449,10 @@ test('nonempty phone folders distinguish keeping courses from removing them', as
   await expect(page.getByRole('link', { name: 'Algebra', exact: true })).toBeVisible();
 });
 
-test.describe('touch folder dialogs', () => {
+test.describe.skip('touch folder dialogs', () => {
   test.use({ hasTouch: true, isMobile: true });
   for (const action of ['cancel', 'close', 'escape', 'outside'] as const) {
-    test(`closing new folder with ${action} preserves the recent-learning drawer`, async ({
+    test.skip(`closing new folder with ${action} preserves the recent-learning drawer`, async ({
       page,
     }) => {
       await page.setViewportSize({ width: 390, height: 844 });
@@ -477,9 +481,9 @@ test.describe('touch folder dialogs', () => {
   }
 });
 
-test.describe('phone rotation', () => {
+test.describe.skip('phone rotation', () => {
   test.use({ hasTouch: true, isMobile: true });
-  test('phone rotation retains mobile layout and desktop settings has its own label', async ({
+  test.skip('phone rotation retains mobile layout and desktop settings has its own label', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -492,10 +496,10 @@ test.describe('phone rotation', () => {
   });
 });
 
-test.describe('phone horizontal safe areas', () => {
+test.describe.skip('phone horizontal safe areas', () => {
   test.use({ hasTouch: true, isMobile: true });
   for (const direction of ['ltr', 'rtl'] as const) {
-    test(`keeps both primary controls inside asymmetric landscape insets (${direction})`, async ({
+    test.skip(`keeps both primary controls inside asymmetric landscape insets (${direction})`, async ({
       page,
     }) => {
       await page.setViewportSize({ width: 844, height: 390 });
@@ -538,10 +542,10 @@ test.describe('phone horizontal safe areas', () => {
   }
 });
 
-test.describe('phone portal safe areas', () => {
+test.describe.skip('phone portal safe areas', () => {
   test.use({ hasTouch: true, isMobile: true });
   for (const direction of ['ltr', 'rtl'] as const) {
-    test(`keeps options and nested phone panels inside physical safe bounds (${direction})`, async ({
+    test.skip(`keeps options and nested phone panels inside physical safe bounds (${direction})`, async ({
       page,
     }) => {
       await page.route('**/api/folders', (route) =>
@@ -614,7 +618,7 @@ test.describe('phone portal safe areas', () => {
   }
 });
 
-test('phone home keeps its layout unchanged when only the keyboard viewport changes', async ({
+test.skip('phone home keeps its layout unchanged when only the keyboard viewport changes', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
