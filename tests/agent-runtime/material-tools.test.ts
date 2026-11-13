@@ -399,7 +399,7 @@ describe('material agent tools', () => {
     const result = await read.execute('call_1', { materialId: 'mat_foreign' } as never);
     expect(getMaterial).toHaveBeenCalledWith('ses_1', 'mat_foreign');
     expect(result).toMatchObject({
-      content: [{ type: 'text', text: '资料不存在或不可访问。' }],
+      content: [{ type: 'text', text: 'Material not found.' }],
       details: { status: 'not_found' },
     });
     // A referenced material that does not exist is an ERROR: the event log's
@@ -936,7 +936,7 @@ describe('material agent tools', () => {
     );
     const result = await read.execute('call_1', { materialId: 'mat_visible' } as never);
     expect(result).toMatchObject({
-      content: [{ type: 'text', text: '资料的文字内容不可用。' }],
+      content: [{ type: 'text', text: 'Material text is unavailable.' }],
       details: { status: 'text_unavailable', materialId: 'mat_visible' },
     });
     expect(isErrorOf(result)).toBe(true);

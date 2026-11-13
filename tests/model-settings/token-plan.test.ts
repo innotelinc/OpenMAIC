@@ -84,15 +84,16 @@ describe('token plan recommendation', () => {
       agent: 'omniroute:auto/best-chat',
       image: 'omniroute:codex/gpt-5.6-luna-image',
       video: 'omniroute:veoaifree-web/seedance',
+      tts: 'omniroute:gtts/default',
     });
   });
 
-  it('leaves out speech: the gateway has no credentials for it', async () => {
-    // Declaring tts would light up a slot whose every call answers 400, and a
-    // broken speech slot is what made classrooms silent. The recommendation is
-    // the honest set of modalities the plan can actually serve.
+  it('carries speech on the gateway’s keyless route and leaves search out', async () => {
+    // The gateway serves speech through its own gTTS route, so the slot is
+    // real and the recommendation names it. Search and fetch are not listed:
+    // the gateway answers those on shapes this app has no adapter for.
     const view = viewOf(await configure(addPlan('omniroute')));
-    expect(recommendationIn(view, 'omniroute')).not.toHaveProperty('tts');
+    expect(recommendationIn(view, 'omniroute')).toHaveProperty('tts', 'omniroute:gtts/default');
     expect(recommendationIn(view, 'omniroute')).not.toHaveProperty('webSearch');
     expect(recommendationIn(view, 'omniroute')).not.toHaveProperty('webFetch');
   });
@@ -182,6 +183,7 @@ describe('token plan assignments', () => {
       'course.content.interactive': 'omniroute:auto/best-coding',
       agent: 'omniroute:auto/best-chat',
       video: 'omniroute:veoaifree-web/seedance',
+      tts: 'omniroute:gtts/default',
     });
     // Both resolve on the server.
     await applyModelSettingsChange(config, { kind: 'slots', set: overwrite });

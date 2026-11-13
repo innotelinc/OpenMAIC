@@ -3399,5 +3399,10 @@
       },
       "close": "ガイドを閉じる"
     }
+  },
+  "proMode": {
+    "badgeAria": "Pro モード",
+    "badgeEnter": "Pro モードをオンにする",
+    "badgeExit": "Pro モードをオフにする"
   }
 }

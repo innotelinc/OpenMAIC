@@ -760,7 +760,9 @@ export async function rawConsumersScenario(h: LibraryHarness): Promise<void> {
     materialId: 'src-bad',
     stageId: 'stage-1',
   } as never)) as { content: Array<{ text: string }>; isError?: boolean };
-  expect(result.content[0]!.text).toBe('无法读取这份资料的原文件，请重新上传后再试。');
+  expect(result.content[0]!.text).toBe(
+    'The original file could not be read. Upload it again and retry.',
+  );
   expect(result.isError).toBe(true);
 }
 

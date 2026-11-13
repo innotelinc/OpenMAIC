@@ -141,7 +141,7 @@ describe('generation media tools', () => {
   });
 
   it.each([
-    [undefined, '找不到这份媒体资料，或它没有可用的媒体文件。'],
+    [undefined, 'Media material not found or has no media bytes.'],
     ['en-US', 'Media material not found or has no media bytes.'],
   ] as const)(
     'turns an ast_ asset id into a pointer without copying, and localizes missing materials (locale=%s)',

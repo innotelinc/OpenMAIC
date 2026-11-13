@@ -144,6 +144,7 @@ describe('Token Plan → connecting applies the plan’s recommended configurati
           agent: 'omniroute:auto/best-chat',
           image: 'omniroute:codex/gpt-5.6-luna-image',
           video: 'omniroute:veoaifree-web/seedance',
+          tts: 'omniroute:gtts/default',
         },
       },
     ]);

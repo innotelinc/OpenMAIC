@@ -3399,5 +3399,10 @@
       },
       "close": "إغلاق الدليل"
     }
+  },
+  "proMode": {
+    "badgeAria": "وضع Pro",
+    "badgeEnter": "تشغيل وضع Pro",
+    "badgeExit": "إيقاف وضع Pro"
   }
 }

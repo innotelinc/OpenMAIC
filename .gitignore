@@ -13,3 +13,12 @@ eval/orchestration/results-child-failure/
 
 # Operator model configuration (see openmaic.example.yml); it names secrets via ${VAR}
 /openmaic.yml
+
+# generated: synced from packages/@openmaic/importer/dist for runtime URL import
+public/vendor/maic-importer/
+
+# TypeScript build info
+tsconfig.tsbuildinfo
+
+# local runtime data
+data/

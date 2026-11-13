@@ -3399,5 +3399,10 @@
       },
       "close": "关闭指引"
     }
+  },
+  "proMode": {
+    "badgeAria": "Pro 模式",
+    "badgeEnter": "开启 Pro 模式",
+    "badgeExit": "关闭 Pro 模式"
   }
 }

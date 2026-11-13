@@ -3399,5 +3399,10 @@
       },
       "close": "Fechar guia"
     }
+  },
+  "proMode": {
+    "badgeAria": "Modo Pro",
+    "badgeEnter": "Ativar o modo Pro",
+    "badgeExit": "Desativar o modo Pro"
   }
 }

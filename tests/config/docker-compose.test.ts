@@ -107,7 +107,11 @@ describe('docker-compose.yml', () => {
   });
 
   it('reads its defaults before .env.local, so .env.local overrides them', () => {
-    expect(app.env_file).toEqual(['docker-compose.defaults.env', '.env.local']);
+    expect(app.env_file).toEqual([
+      'docker-compose.defaults.env',
+      '.env.local',
+      '.env.classroom-secrets',
+    ]);
     // Keys in `environment` would beat .env.local; the owner settings must not be there.
     for (const key of ['DATABASE_URL', 'OWNER_SINGLE_USER', 'OWNER_CLAIM_TRIGGER']) {
       expect(defaultOf(app.environment, key), key).toBeUndefined();

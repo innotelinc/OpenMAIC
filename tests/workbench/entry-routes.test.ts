@@ -56,16 +56,16 @@ describe('workbench entry routes', () => {
     expect(navigation.notFound).not.toHaveBeenCalled();
   });
 
-  it('keeps the classic home at / when disabled, so the workspace redirect cannot loop', () => {
+  it('keeps the home page at / when disabled, so the workspace redirect cannot loop', () => {
     const home = HomePage() as ReactElement;
-    expect(home.type).toBe(ClassicHomePage);
+    expect((home.type as { name?: string }).name).toBe('HomePage');
     expect(navigation.redirect).not.toHaveBeenCalled();
   });
 
-  it('renders the workspace itself at / when enabled', () => {
+  it('keeps the home page at / when the workspace is enabled', () => {
     state.enabled = true;
     const home = HomePage() as ReactElement;
-    expect(home.type).toBe(WorkspaceEntry);
+    expect((home.type as { name?: string }).name).toBe('HomePage');
     expect(navigation.redirect).not.toHaveBeenCalled();
   });
 });

@@ -3399,5 +3399,10 @@
       },
       "close": "Đóng hướng dẫn"
     }
+  },
+  "proMode": {
+    "badgeAria": "Chế độ Pro",
+    "badgeEnter": "Bật chế độ Pro",
+    "badgeExit": "Tắt chế độ Pro"
   }
 }

@@ -3399,5 +3399,10 @@
       },
       "close": "안내 닫기"
     }
+  },
+  "proMode": {
+    "badgeAria": "Pro 모드",
+    "badgeEnter": "Pro 모드 켜기",
+    "badgeExit": "Pro 모드 끄기"
   }
 }

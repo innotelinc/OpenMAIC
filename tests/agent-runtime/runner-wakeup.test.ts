@@ -777,7 +777,7 @@ describe('runSession material wording follows the consumed message', () => {
   it('falls back to the project default when neither the session nor a message names one', async () => {
     const run = runSession({ running: new Map(), shuttingDown: false }, SESSION);
     await waitForReady();
-    expect(await listedReason()).toBe(REASON['zh-CN']);
+    expect(await listedReason()).toBe(REASON['en-US']);
     await settle(run);
   });
 
