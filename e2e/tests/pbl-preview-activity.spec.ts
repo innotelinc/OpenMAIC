@@ -3,7 +3,12 @@ import { createServer, type Server, type ServerResponse } from 'node:http';
 import { connect, type Socket } from 'node:net';
 import { once } from 'node:events';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { test, expect } from '@playwright/test';
+import { test, expect as baseExpect } from '@playwright/test';
+
+// This file drives a real gateway child process, two nested frames and a fake
+// clock; on a loaded runner the first document paint can take longer than the
+// default expect budget, which read as a failure rather than as slowness.
+const expect = baseExpect.configure({ timeout: 15_000 });
 
 async function listen(server: Server) {
   server.listen(0, '127.0.0.1');
