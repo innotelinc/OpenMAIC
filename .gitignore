@@ -10,3 +10,6 @@
 
 # Local forced-child eval results
 eval/orchestration/results-child-failure/
+
+# Operator model configuration (see openmaic.example.yml); it names secrets via ${VAR}
+/openmaic.yml
