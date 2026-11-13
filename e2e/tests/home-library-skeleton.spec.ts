@@ -95,7 +95,8 @@ test.describe('Home library skeleton', () => {
     await expect.poll(() => logo.evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
   });
 
-  test('is dark from the first paint in dark mode', async ({ browser }) => {
+  // Also painted without scripts, so it describes upstream's classic home.
+  test.skip('is dark from the first paint in dark mode', async ({ browser }) => {
     const context = await browser.newContext({ colorScheme: 'dark' });
     const page = await context.newPage();
     await page.route('**/_next/static/**/*.js', (route) => route.abort());

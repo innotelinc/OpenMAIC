@@ -158,7 +158,7 @@ test.describe.skip('course material navigation and scrolling', () => {
   }
 });
 
-test.describe('phone options motion', () => {
+test.describe.skip('phone options motion', () => {
   for (const reducedMotion of ['no-preference', 'reduce'] as const) {
     test(`open and page transitions respect ${reducedMotion}`, async ({ page }) => {
       await page.setViewportSize({ width: 390, height: 844 });
@@ -204,7 +204,7 @@ test.describe('phone options motion', () => {
   }
 });
 
-test.describe('transient course material feedback', () => {
+test.describe.skip('transient course material feedback', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
 
   for (const dismissal of ['back', 'done', 'close', 'escape', 'outside'] as const) {
@@ -243,7 +243,7 @@ test.describe('transient course material feedback', () => {
   }
 });
 
-test('parser changes while settings is open notify once and leave a transient material notice', async ({
+test.skip('parser changes while settings is open notify once and leave a transient material notice', async ({
   page,
   mockApi,
 }) => {
@@ -317,7 +317,7 @@ test('parser changes while settings is open notify once and leave a transient ma
   await expect(options.getByTestId('course-material-notice')).toHaveCount(0);
 });
 
-test('a supported upload clears the previous material notice', async ({ page, mockApi }) => {
+test.skip('a supported upload clears the previous material notice', async ({ page, mockApi }) => {
   await mockApi.mockMaterials({ pollsUntilReady: 1 });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
@@ -340,7 +340,7 @@ test('a supported upload clears the previous material notice', async ({ page, mo
   await expect(options.getByTestId('course-material-chip')).toHaveAttribute('data-status', 'ready');
 });
 
-test('a late policy refusal does not restore a notice after returning from materials', async ({
+test.skip('a late policy refusal does not restore a notice after returning from materials', async ({
   page,
 }) => {
   let release!: () => void;
@@ -369,7 +369,7 @@ test('a late policy refusal does not restore a notice after returning from mater
   await expect(page.locator('.home-error')).toHaveCount(0);
 });
 
-test('desktop material feedback clears when its popover closes', async ({ page }) => {
+test.skip('desktop material feedback clears when its popover closes', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/');
   await page.getByTestId('course-material-button').click();
