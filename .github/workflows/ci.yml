@@ -103,9 +103,25 @@ jobs:
             echo "Re-run after the branch has an ordinary push range, or verify the versions by hand."
             exit 1
           fi
+          if ! git merge-base --is-ancestor "$base" "$HEAD_SHA"; then
+            # A rewritten history leaves the reported base beside this head
+            # instead of behind it, so `base..head` is not the change that was
+            # pushed. Substituting HEAD^ would still guess: a force push can
+            # replace many commits at once. The one rewrite that needs no
+            # version bump is the one that changes no file, and that is the only
+            # case accepted here.
+            if git diff --quiet "$base" "$HEAD_SHA" -- .; then
+              echo "::notice::Push rewrote history without changing any file, so there is no version bump to check."
+              exit 0
+            fi
+            echo "::error::Push base ${base} is not an ancestor of ${HEAD_SHA}, so the change this push introduced cannot be isolated."
+            echo "Re-run after the branch has an ordinary push range, or verify the versions by hand."
+            exit 1
+          fi
           node scripts/check-package-version-bumps.mjs "$base"
         env:
           BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
 
       # The tarball smoke test proves this about the bytes that would actually
       # be published, but it installs five package tarballs, so it runs only on
