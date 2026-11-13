@@ -36,6 +36,21 @@ echo "::error::Push range base \${base:-<empty>} is unavailable, so this push ca
 echo "Re-run after the branch has an ordinary push range, or verify the versions by hand."
 exit 1
 fi
+if ! git merge-base --is-ancestor "$base" "$HEAD_SHA"; then
+# A rewritten history leaves the reported base beside this head
+# instead of behind it, so \`base..head\` is not the change that was
+# pushed. Substituting HEAD^ would still guess: a force push can
+# replace many commits at once. The one rewrite that needs no
+# version bump is the one that changes no file, and that is the only
+# case accepted here.
+if git diff --quiet "$base" "$HEAD_SHA" -- .; then
+echo "::notice::Push rewrote history without changing any file, so there is no version bump to check."
+exit 0
+fi
+echo "::error::Push base \${base} is not an ancestor of \${HEAD_SHA}, so the change this push introduced cannot be isolated."
+echo "Re-run after the branch has an ordinary push range, or verify the versions by hand."
+exit 1
+fi
 node scripts/check-package-version-bumps.mjs "$base"
 `.trim();
 
@@ -83,7 +98,10 @@ function assertMainPushVersionGate(workflow: Workflow): void {
   const mainPush = step(workflow, 'lint', 'Package version bumps (main push)');
 
   expect(mainPush.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/main'");
-  expect(mainPush.env).toEqual({ BEFORE_SHA: '${{ github.event.before }}' });
+  expect(mainPush.env).toEqual({
+    BEFORE_SHA: '${{ github.event.before }}',
+    HEAD_SHA: '${{ github.sha }}',
+  });
   expect(normalizeShell(mainPush.run)).toBe(EXPECTED_MAIN_PUSH_GATE);
 }
 
